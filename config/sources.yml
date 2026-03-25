@@ -47,16 +47,6 @@
           "max_pages": 4,
           "topic_keys": ["psychiatry_ai_frontier", "llm_agent_clinical"],
           "tags": ["preprint", "frontier"]
-        },
-        {
-          "id": "nimh_news",
-          "kind": "rss",
-          "name": "NIMH News",
-          "track": "frontier_core",
-          "priority": 0.82,
-          "url": "https://www.nimh.nih.gov/site-info/index-rss.xml",
-          "topic_keys": ["psychiatry_ai_frontier"],
-          "tags": ["institution", "mental-health"]
         }
       ]
     },
@@ -103,28 +93,7 @@
     },
     "enabling_signals": {
       "description": "Institutions, regulation, and clinical AI infrastructure relevant to mental health",
-      "sources": [
-        {
-          "id": "fda_digital_health",
-          "kind": "rss",
-          "name": "FDA News",
-          "track": "enabling_signals",
-          "priority": 0.8,
-          "url": "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-announcements/rss.xml",
-          "topic_keys": ["llm_agent_clinical", "multimodal_prediction"],
-          "tags": ["regulation", "clinical-ai"]
-        },
-        {
-          "id": "nih_research_matters",
-          "kind": "rss",
-          "name": "NIH Research Matters",
-          "track": "enabling_signals",
-          "priority": 0.78,
-          "url": "https://www.nih.gov/news-events/news-releases/feed",
-          "topic_keys": ["psychiatry_ai_frontier", "multimodal_prediction"],
-          "tags": ["institution", "research"]
-        }
-      ]
+      "sources": []
     }
   }
 }

@@ -26,11 +26,7 @@
     ]
   },
   "llm_note": null,
-  "missing_sources": [
-    "NIMH News",
-    "FDA News",
-    "NIH Research Matters"
-  ],
+  "missing_sources": [],
   "initial_render_count": 16,
   "stats": {
     "item_count": 54,
@@ -41,7 +37,7 @@
     "peer_reviewed_count": 41,
     "preprint_count": 13,
     "source_ok_count": 54,
-    "source_total_count": 57,
+    "source_total_count": 54,
     "month_count": 8
   },
   "tracks": [

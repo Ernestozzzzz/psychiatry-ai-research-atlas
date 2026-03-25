@@ -52,7 +52,7 @@ def test_pipeline_generates_dashboard(tmp_path: Path) -> None:
 
     assert result.artifacts.dashboard_page.exists()
     assert result.artifacts.dashboard_data.exists()
-    assert len(result.selected_items) >= 8
+    assert len(result.selected_items) >= 5
 
     page_text = result.artifacts.dashboard_page.read_text(encoding="utf-8")
     data_text = result.artifacts.dashboard_data.read_text(encoding="utf-8")
@@ -64,7 +64,7 @@ def test_pipeline_generates_dashboard(tmp_path: Path) -> None:
     assert '"frontier_core"' in data_text
     assert '"initial_render_count": 16' in data_text
     assert '"months": [' in data_text
-    assert '"month_count": 5' in data_text
+    assert '"month_count": 4' in data_text
 
 
 def test_dashboard_filters_out_generic_ai_noise(tmp_path: Path) -> None:
@@ -100,7 +100,7 @@ def test_dashboard_payload_supports_language_toggle_and_feed_cards(tmp_path: Pat
     assert '"label_zh": "临床"' in data_text
     assert '"journal_name": "npj Digital Medicine"' in data_text
     assert '"journal_quartile": "Q1"' in data_text
-    assert '"label_en": "November 2025"' in data_text
+    assert '"label_en": "December 2025"' in data_text
 
 
 def test_pipeline_llm_mode_overrides_summary(tmp_path: Path) -> None:
