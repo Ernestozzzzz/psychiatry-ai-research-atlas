@@ -1,0 +1,9 @@
+[project]
+name = "intel-center"
+version = "0.1.0"
+description = "Psychiatry + AI morning research radar for an Obsidian workspace."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

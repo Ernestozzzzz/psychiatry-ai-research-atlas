@@ -1,0 +1,67 @@
+{
+  "journals": {
+    "jama psychiatry": {
+      "quartile": "Q1"
+    },
+    "world psychiatry": {
+      "quartile": "Q1"
+    },
+    "the lancet psychiatry": {
+      "quartile": "Q1"
+    },
+    "psychological medicine": {
+      "quartile": "Q1"
+    },
+    "journal of affective disorders": {
+      "quartile": "Q1"
+    },
+    "depression and anxiety": {
+      "quartile": "Q1"
+    },
+    "npj digital medicine": {
+      "quartile": "Q1"
+    },
+    "internet interventions": {
+      "quartile": "Q1"
+    },
+    "translational psychiatry": {
+      "quartile": "Q1"
+    },
+    "journal of medical internet research": {
+      "quartile": "Q1"
+    },
+    "bmc medicine": {
+      "quartile": "Q1"
+    },
+    "bmc psychiatry": {
+      "quartile": "Q2"
+    },
+    "general hospital psychiatry": {
+      "quartile": "Q2"
+    },
+    "journal of psychiatric research": {
+      "quartile": "Q1"
+    },
+    "schizophrenia bulletin": {
+      "quartile": "Q1"
+    },
+    "molecular psychiatry": {
+      "quartile": "Q1"
+    },
+    "behaviour research and therapy": {
+      "quartile": "Q1"
+    },
+    "jmir mhealth and uhealth": {
+      "quartile": "Q1"
+    },
+    "clinical psychological science": {
+      "quartile": "Q1"
+    },
+    "journal of consulting and clinical psychology": {
+      "quartile": "Q1"
+    },
+    "sleep medicine reviews": {
+      "quartile": "Q1"
+    }
+  }
+}

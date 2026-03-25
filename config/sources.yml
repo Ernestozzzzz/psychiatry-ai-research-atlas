@@ -1,0 +1,130 @@
+{
+  "defaults": {
+    "days_back": 366,
+    "top_n": 240,
+    "min_primary_research_items": 36,
+    "max_macro_items": 0,
+    "initial_render_count": 16,
+    "max_preprint_items": 24,
+    "max_items_per_source": 12
+  },
+  "tracks": {
+    "frontier_core": {
+      "description": "Psychiatry and psychology + AI frontier",
+      "sources": [
+        {
+          "id": "europepmc_psychiatry_ai",
+          "kind": "pubmed",
+          "name": "PubMed Psychiatry + AI",
+          "track": "frontier_core",
+          "priority": 1.0,
+          "query": "(psychiatry OR psychiatric OR depression OR schizophrenia OR bipolar OR suicidality OR psychosis) AND (\"artificial intelligence\" OR \"machine learning\" OR \"deep learning\" OR \"large language model\" OR multimodal OR wearable OR digital phenotyping)",
+          "page_size": 120,
+          "max_pages": 4,
+          "topic_keys": ["psychiatry_ai_frontier", "multimodal_prediction"],
+          "tags": ["paper", "frontier"]
+        },
+        {
+          "id": "europepmc_psychology_ai",
+          "kind": "pubmed",
+          "name": "PubMed Psychology + AI",
+          "track": "frontier_core",
+          "priority": 0.98,
+          "query": "(psychology OR psychological OR psychotherapy OR cognitive OR behavior OR behavioural OR anxiety) AND (\"artificial intelligence\" OR \"machine learning\" OR \"deep learning\" OR \"large language model\" OR multimodal OR digital phenotyping)",
+          "page_size": 120,
+          "max_pages": 4,
+          "topic_keys": ["psychiatry_ai_frontier", "llm_agent_clinical"],
+          "tags": ["paper", "frontier"]
+        },
+        {
+          "id": "arxiv_mental_health_ai",
+          "kind": "atom",
+          "name": "arXiv Psychiatry / Psychology AI",
+          "track": "frontier_core",
+          "priority": 0.95,
+          "url": "https://export.arxiv.org/api/query?search_query=all:(psychiatry+OR+psychology+OR+\"mental+health\"+OR+depression+OR+anxiety)+AND+all:(\"machine+learning\"+OR+\"artificial+intelligence\"+OR+\"large+language+model\"+OR+multimodal+OR+wearable)&start=0&max_results=80&sortBy=submittedDate&sortOrder=descending",
+          "page_size": 80,
+          "max_pages": 4,
+          "topic_keys": ["psychiatry_ai_frontier", "llm_agent_clinical"],
+          "tags": ["preprint", "frontier"]
+        },
+        {
+          "id": "nimh_news",
+          "kind": "rss",
+          "name": "NIMH News",
+          "track": "frontier_core",
+          "priority": 0.82,
+          "url": "https://www.nimh.nih.gov/site-info/index-rss.xml",
+          "topic_keys": ["psychiatry_ai_frontier"],
+          "tags": ["institution", "mental-health"]
+        }
+      ]
+    },
+    "current_program": {
+      "description": "Clinical psychiatry, psychology, digital phenotyping, and comorbidity",
+      "sources": [
+        {
+          "id": "europepmc_depression_cvd",
+          "kind": "pubmed",
+          "name": "PubMed Clinical Mental Health Prediction",
+          "track": "current_program",
+          "priority": 0.98,
+          "query": "(depression OR anxiety OR psychiatric OR mental health OR psychotherapy) AND (prediction OR screening OR monitoring OR trajectory OR intervention) AND (clinical OR cohort OR patient) AND (\"machine learning\" OR \"artificial intelligence\" OR multimodal OR wearable OR \"digital phenotyping\" OR llm)",
+          "page_size": 120,
+          "max_pages": 4,
+          "topic_keys": ["depression", "cardiovascular", "comorbidity"],
+          "tags": ["paper", "current-program"]
+        },
+        {
+          "id": "europepmc_comorbidity_prediction",
+          "kind": "pubmed",
+          "name": "PubMed Mental-Physical Comorbidity",
+          "track": "current_program",
+          "priority": 0.9,
+          "query": "(comorbidity OR multimorbidity OR \"integrated care\") AND (mental OR psychiatric OR depression OR anxiety) AND (prediction OR risk OR trajectory OR longitudinal) AND (\"machine learning\" OR \"artificial intelligence\" OR multimodal OR wearable OR \"digital phenotyping\")",
+          "page_size": 120,
+          "max_pages": 4,
+          "topic_keys": ["comorbidity", "multimodal_prediction"],
+          "tags": ["paper", "current-program"]
+        },
+        {
+          "id": "europepmc_digital_phenotyping",
+          "kind": "pubmed",
+          "name": "PubMed Digital Phenotyping",
+          "track": "current_program",
+          "priority": 0.86,
+          "query": "(\"digital phenotyping\" OR wearable OR smartphone OR actigraphy OR \"ecological momentary assessment\" OR \"passive sensing\") AND (depression OR anxiety OR psychiatry OR mental health OR psychology)",
+          "page_size": 120,
+          "max_pages": 4,
+          "topic_keys": ["digital_phenotyping", "psychiatry_ai_frontier"],
+          "tags": ["paper", "current-program"]
+        }
+      ]
+    },
+    "enabling_signals": {
+      "description": "Institutions, regulation, and clinical AI infrastructure relevant to mental health",
+      "sources": [
+        {
+          "id": "fda_digital_health",
+          "kind": "rss",
+          "name": "FDA News",
+          "track": "enabling_signals",
+          "priority": 0.8,
+          "url": "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-announcements/rss.xml",
+          "topic_keys": ["llm_agent_clinical", "multimodal_prediction"],
+          "tags": ["regulation", "clinical-ai"]
+        },
+        {
+          "id": "nih_research_matters",
+          "kind": "rss",
+          "name": "NIH Research Matters",
+          "track": "enabling_signals",
+          "priority": 0.78,
+          "url": "https://www.nih.gov/news-events/news-releases/feed",
+          "topic_keys": ["psychiatry_ai_frontier", "multimodal_prediction"],
+          "tags": ["institution", "research"]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,165 @@
+{
+  "sources": {
+    "europepmc_psychiatry_ai": [
+      {
+        "title": "Multimodal foundation model predicts relapse trajectories in severe depression using EHR and wearable data",
+        "url": "https://pubmed.ncbi.nlm.nih.gov/39876543/",
+        "published_at": "2026-03-22T08:00:00+00:00",
+        "summary": "A multicenter cohort study combines EHR, actigraphy and questionnaire signals to predict relapse in major depressive disorder.",
+        "journal": "npj Digital Medicine",
+        "journal_quartile": "Q1",
+        "venue_type": "journal"
+      },
+      {
+        "title": "Large language model support for psychiatric intake note summarization in specialist clinics",
+        "url": "https://jamanetwork.com/journals/jamapsychiatry/fullarticle/2823456",
+        "published_at": "2026-02-14T12:00:00+00:00",
+        "summary": "This method paper evaluates large language model assistance for psychiatric clinical documentation and triage.",
+        "journal": "JAMA Psychiatry",
+        "journal_quartile": "Q1",
+        "venue_type": "journal"
+      }
+    ],
+    "europepmc_psychology_ai": [
+      {
+        "title": "Machine learning model estimates psychotherapy response trajectories from language and symptom dynamics",
+        "url": "https://www.cambridge.org/core/journals/psychological-medicine/article/machine-learning-model-estimates-psychotherapy-response-trajectories/1234567890",
+        "published_at": "2026-01-18T12:00:00+00:00",
+        "summary": "A clinical psychology study links therapy-session language features and repeated symptom measures to response prediction.",
+        "journal": "Psychological Medicine",
+        "journal_quartile": "Q1",
+        "venue_type": "journal"
+      },
+      {
+        "title": "Transformer screening model for mood symptoms in online counseling platforms",
+        "url": "https://lowquality-journal.net/mental-health-ai-screening-2026",
+        "published_at": "2025-09-18T12:00:00+00:00",
+        "summary": "A small retrospective study reports high accuracy for automated mood symptom screening.",
+        "journal": "Global Journal of AI Mental Wellness",
+        "venue_type": "journal"
+      }
+    ],
+    "arxiv_mental_health_ai": [
+      {
+        "title": "Agentic screening pipeline for suicide risk escalation from longitudinal mental health notes",
+        "url": "https://arxiv.org/abs/2603.10234",
+        "published_at": "2025-12-21T16:00:00+00:00",
+        "summary": "An agent workflow extracts structured events from longitudinal notes and forecasts suicidality deterioration.",
+        "journal": "arXiv",
+        "venue_type": "preprint"
+      }
+    ],
+    "nimh_news": [
+      {
+        "title": "NIMH funds AI-enabled digital phenotyping consortium for mood and psychosis monitoring",
+        "url": "https://www.nimh.nih.gov/news/science-news/2026/digital-phenotyping-consortium-for-mood-and-psychosis-monitoring",
+        "published_at": "2025-11-20T10:00:00+00:00",
+        "summary": "The consortium will expand AI-enabled smartphone and wearable monitoring infrastructure for mental health research.",
+        "venue_type": "institution"
+      }
+    ],
+    "europepmc_depression_cvd": [
+      {
+        "title": "Depression burden improves 12-month cardiovascular event prediction when combined with ECG trajectories",
+        "url": "https://www.sciencedirect.com/science/article/pii/S0165032726003210",
+        "published_at": "2026-03-23T06:30:00+00:00",
+        "summary": "A hospital cohort integrates depression severity and ECG trajectory features to improve cardiovascular risk prediction.",
+        "journal": "Journal of Affective Disorders",
+        "journal_quartile": "Q1",
+        "venue_type": "journal"
+      }
+    ],
+    "europepmc_comorbidity_prediction": [
+      {
+        "title": "Mental-physical multimorbidity trajectories identify high-risk integrated care pathways",
+        "url": "https://www.ghpjournal.com/article/S0163-8343(26)00045-8/fulltext",
+        "published_at": "2025-10-22T18:00:00+00:00",
+        "summary": "Trajectory clustering highlights multimorbidity subtypes linked to psychiatric admissions and cardiometabolic complications.",
+        "journal": "General Hospital Psychiatry",
+        "journal_quartile": "Q2",
+        "venue_type": "journal"
+      }
+    ],
+    "europepmc_digital_phenotyping": [
+      {
+        "title": "Passive sensing and actigraphy improve weekly anxiety monitoring in outpatient psychiatry",
+        "url": "https://www.sciencedirect.com/science/article/pii/S2214782926000187",
+        "published_at": "2026-02-17T09:00:00+00:00",
+        "summary": "Wearable and smartphone data improved symptom monitoring for anxiety and depression in routine mental health care.",
+        "journal": "Internet Interventions",
+        "journal_quartile": "Q1",
+        "venue_type": "journal"
+      }
+    ],
+    "who_mental_health": [
+      {
+        "title": "WHO highlights integration of mental and cardiovascular care in community pathways",
+        "url": "https://example.org/who-1",
+        "published_at": "2026-03-21T09:00:00+00:00",
+        "summary": "The update emphasizes integrated care and scalable digital support for chronic disease management."
+      }
+    ],
+    "fda_digital_health": [
+      {
+        "title": "FDA discusses clinical AI evaluation principles for software in mental health care",
+        "url": "https://www.fda.gov/news-events/press-announcements/fda-discusses-clinical-ai-evaluation-principles-software-mental-health-care",
+        "published_at": "2025-12-15T14:00:00+00:00",
+        "summary": "The announcement covers transparency, validation and clinical workflow risks for AI-enabled tools.",
+        "venue_type": "institution"
+      }
+    ],
+    "techcrunch_ai": [
+      {
+        "title": "New health AI startup targets remote depression monitoring with multimodal sensors",
+        "url": "https://example.org/tc-1",
+        "published_at": "2026-03-22T13:00:00+00:00",
+        "summary": "The company combines smartphone, wearable and conversation features for chronic monitoring."
+      }
+    ],
+    "nih_research_matters": [
+      {
+        "title": "NIH researchers map AI-ready signals for cardiovascular and mental health comorbidity",
+        "url": "https://www.nih.gov/news-events/news-releases/nih-researchers-map-ai-ready-signals-cardiovascular-mental-health-comorbidity",
+        "published_at": "2026-01-21T08:00:00+00:00",
+        "summary": "The work identifies clinical and behavioral signals for longitudinal prediction of multimorbidity.",
+        "venue_type": "institution"
+      }
+    ],
+    "nytimes_world": [
+      {
+        "title": "Governments debate AI regulation as health systems expand digital infrastructure",
+        "url": "https://example.org/world-1",
+        "published_at": "2026-03-22T11:00:00+00:00",
+        "summary": "The broader policy environment may shape clinical AI adoption."
+      }
+    ],
+    "nytimes_business": [
+      {
+        "title": "Cloud vendors race to win hospital AI workloads",
+        "url": "https://example.org/biz-1",
+        "published_at": "2026-03-22T11:30:00+00:00",
+        "summary": "Healthcare and AI procurement budgets keep rising."
+      }
+    ],
+    "cnbc_markets": [
+      {
+        "title": "Nasdaq rises as AI megacaps lead premarket sentiment",
+        "url": "https://example.org/markets-1",
+        "published_at": "2026-03-23T05:30:00+00:00",
+        "summary": "Large-cap technology names lift market expectations into the session."
+      }
+    ]
+  },
+  "market_snapshots": {
+    "S&P 500": {"close": 5210.55, "change_pct": 0.61, "as_of": "2026-03-22", "status": "ok"},
+    "Nasdaq": {"close": 18320.42, "change_pct": 1.23, "as_of": "2026-03-22", "status": "ok"},
+    "Dow": {"close": 39785.11, "change_pct": -0.12, "as_of": "2026-03-22", "status": "ok"},
+    "AAPL": {"close": 211.14, "change_pct": 0.44, "as_of": "2026-03-22", "status": "ok"},
+    "MSFT": {"close": 472.88, "change_pct": 0.73, "as_of": "2026-03-22", "status": "ok"},
+    "NVDA": {"close": 143.76, "change_pct": 2.18, "as_of": "2026-03-22", "status": "ok"},
+    "AMZN": {"close": 201.03, "change_pct": 0.31, "as_of": "2026-03-22", "status": "ok"},
+    "GOOGL": {"close": 188.62, "change_pct": 0.67, "as_of": "2026-03-22", "status": "ok"},
+    "META": {"close": 612.57, "change_pct": 1.12, "as_of": "2026-03-22", "status": "ok"},
+    "TSLA": {"close": 199.45, "change_pct": -1.41, "as_of": "2026-03-22", "status": "ok"}
+  }
+}

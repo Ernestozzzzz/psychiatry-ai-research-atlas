@@ -1,0 +1,132 @@
+{
+  "topics": {
+    "psychiatry_ai_frontier": {
+      "label": "Psychiatry / Psychology + AI",
+      "zh_label": "精神病学 / 心理学 与 AI",
+      "weight": 2.3,
+      "keywords": [
+        "psychiatry",
+        "psychiatric",
+        "psychology",
+        "psychological",
+        "psychotherapy",
+        "mental health",
+        "mental illness",
+        "artificial intelligence",
+        "machine learning",
+        "deep learning",
+        "large language model",
+        "foundation model",
+        "clinical ai",
+        "digital mental health",
+        "anxiety",
+        "cognitive",
+        "behavioral",
+        "behavioural"
+      ]
+    },
+    "depression": {
+      "label": "Depression",
+      "zh_label": "抑郁",
+      "weight": 1.9,
+      "keywords": [
+        "depression",
+        "depressive",
+        "mdd",
+        "major depressive disorder",
+        "mood disorder",
+        "suicide",
+        "suicidality"
+      ]
+    },
+    "cardiovascular": {
+      "label": "Cardiovascular",
+      "zh_label": "心血管",
+      "weight": 1.7,
+      "keywords": [
+        "cardiovascular",
+        "heart failure",
+        "myocardial infarction",
+        "stroke",
+        "hypertension",
+        "ecg",
+        "arrhythmia",
+        "vascular"
+      ]
+    },
+    "comorbidity": {
+      "label": "Comorbidity",
+      "zh_label": "共病",
+      "weight": 2.0,
+      "keywords": [
+        "comorbidity",
+        "multimorbidity",
+        "co-occurring",
+        "co morbidity",
+        "mental physical",
+        "physical illness",
+        "integrated care"
+      ]
+    },
+    "digital_phenotyping": {
+      "label": "Digital Phenotyping",
+      "zh_label": "数字表型",
+      "weight": 1.8,
+      "keywords": [
+        "digital phenotyping",
+        "passive sensing",
+        "wearable",
+        "smartphone",
+        "actigraphy",
+        "remote monitoring",
+        "sensor",
+        "ecological momentary assessment"
+      ]
+    },
+    "llm_agent_clinical": {
+      "label": "LLM / Agent Clinical",
+      "zh_label": "LLM / Agent 临床应用",
+      "weight": 1.8,
+      "keywords": [
+        "large language model",
+        "llm",
+        "agent",
+        "clinical documentation",
+        "clinical decision support",
+        "note summarization",
+        "conversational ai",
+        "foundation model"
+      ]
+    },
+    "multimodal_prediction": {
+      "label": "Multimodal Prediction",
+      "zh_label": "多模态预测",
+      "weight": 1.8,
+      "keywords": [
+        "multimodal",
+        "risk prediction",
+        "forecasting",
+        "survival model",
+        "representation learning",
+        "ehr",
+        "electronic health record",
+        "time series",
+        "fusion model"
+      ]
+    }
+  },
+  "modality_keywords": {
+    "text": ["text", "note", "llm", "language model", "clinical note"],
+    "ehr": ["ehr", "electronic health record", "claims", "hospital", "registry"],
+    "wearable": ["wearable", "smartphone", "sensor", "ecg", "actigraphy"],
+    "imaging": ["mri", "fmri", "imaging", "neuroimaging", "scan"],
+    "multimodal": ["multimodal", "fusion", "multi-modal"]
+  },
+  "study_type_keywords": {
+    "review": ["review", "systematic review", "meta-analysis"],
+    "cohort": ["cohort", "retrospective", "prospective", "registry"],
+    "trial": ["trial", "randomized", "intervention"],
+    "method": ["benchmark", "framework", "model", "algorithm", "pipeline"],
+    "policy": ["guideline", "regulation", "policy", "framework"]
+  }
+}
