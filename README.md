@@ -89,7 +89,7 @@ The `docs/.nojekyll` file is created automatically so Pages serves the static fi
 - `config/candidates.yml`: admission registry and rubric for external skills / archives / sources
 - `config/journals.yml`: optional local venue metadata such as quartile / IF
 - `src/intel_center/`: pipeline, parsing, scoring, rendering
-- `src/intel_center/weixin_bridge.py`: text-first WeChat <-> Codex bridge based on the OpenClaw Weixin protocol
+- `src/intel_center/weixin_bridge.py`: WeChat <-> Codex bridge with optional voice transcription
 - `scripts/`: CLI entrypoint
 - `intel/`: generated dashboard and snapshots
 - `state/`: machine state and latest run snapshot
@@ -97,7 +97,7 @@ The `docs/.nojekyll` file is created automatically so Pages serves the static fi
 
 ## WeChat Bridge
 
-The repository now includes a text-first WeChat bridge that reuses the `openclaw-weixin` protocol shape but calls the local `codex` CLI as the backend agent.
+The repository now includes a WeChat bridge that reuses the `openclaw-weixin` protocol shape but calls the local `codex` CLI as the backend agent.
 
 Current scope:
 
@@ -105,11 +105,12 @@ Current scope:
 - long-poll `getupdates`
 - per-user `context_token` persistence
 - per-user Codex `thread_id` persistence
+- optional inbound voice transcription via the local `transcribe_diarize.py` CLI
 - text-only outbound replies through `sendmessage`
 
 Current non-goals:
 
-- media upload / download
+- media upload
 - group chats
 - typing indicator
 - production hardening for multi-account routing
@@ -141,7 +142,7 @@ The command prints a QR URL. Scan it in WeChat and wait for confirmation. Creden
 python3 scripts/run_weixin_bridge.py once --workspace /absolute/path/to/workspace
 ```
 
-This fetches one batch of inbound messages, forwards text messages into Codex, and sends the final reply back to WeChat.
+This fetches one batch of inbound messages, forwards text messages into Codex, and sends the final reply back to WeChat. If a supported voice attachment is present, the bridge will try to transcribe it first and append the transcript to the Codex prompt.
 
 ### Run Continuously
 
@@ -158,8 +159,26 @@ Useful options:
 - `--state-path <path>`
 - `--preamble "custom prompt prefix"`
 - `--no-optimize-latency`: disable the ASCII mirror if you explicitly want direct workspace execution
+- `--disable-audio-transcription`: ignore inbound WeChat voice attachments
+- `--transcribe-cli <path>`: override the local transcription CLI
+- `--transcribe-model <model>`: override the voice transcription model
+- `--transcribe-language <lang>`: language hint for voice transcription, defaults to `zh`
 
 The recommended first production setup is `--codex-sandbox read-only`, then move to `workspace-write` only after you are comfortable with the safety model.
+
+Voice transcription requirements:
+
+```bash
+export OPENAI_API_KEY=...
+```
+
+By default the bridge looks for the CLI at:
+
+```bash
+~/.codex/skills/transcribe/scripts/transcribe_diarize.py
+```
+
+You can override that path with `--transcribe-cli` or `TRANSCRIBE_CLI`.
 
 ### Daily WeChat Push
 

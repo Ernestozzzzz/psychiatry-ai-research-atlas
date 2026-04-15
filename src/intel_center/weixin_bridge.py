@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -9,6 +11,7 @@ import random
 import re
 import shutil
 import subprocess
+import threading
 import time
 import unicodedata
 import urllib.error
@@ -19,6 +22,15 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .audio_transcription import (
+    DEFAULT_TRANSCRIBE_LANGUAGE,
+    DEFAULT_TRANSCRIBE_MODEL,
+    AudioAttachment,
+    AudioTranscriptionError,
+    WeixinAudioTranscriber,
+    default_transcribe_cli_path,
+)
+
 BRIDGE_VERSION = "0.1.0"
 DEFAULT_WEIXIN_BASE_URL = "https://ilinkai.weixin.qq.com"
 DEFAULT_BOT_TYPE = "3"
@@ -27,6 +39,9 @@ DEFAULT_ILINK_APP_VERSION = "2.1.8"
 DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000
 DEFAULT_CODEX_MODEL = "gpt-5.4-mini"
 DEFAULT_CODEX_REASONING_EFFORT = "medium"
+
+_MIRROR_LOCK_REGISTRY: dict[str, threading.Lock] = {}
+_MIRROR_LOCK_REGISTRY_GUARD = threading.Lock()
 
 
 class WeixinBridgeError(RuntimeError):
@@ -67,11 +82,16 @@ class WeixinBridgeConfig:
     long_poll_timeout_ms: int = DEFAULT_LONG_POLL_TIMEOUT_MS
     optimize_latency: bool = True
     mirror_root: Path | None = None
+    audio_cache_root: Path | None = None
     preamble: str = (
         "You are replying inside a WeChat direct-message conversation. "
         "Keep responses concise, plain-text friendly, and avoid markdown tables unless requested."
     )
     allow_from: set[str] = field(default_factory=set)
+    enable_audio_transcription: bool = True
+    transcribe_cli: str = ""
+    transcribe_model: str = DEFAULT_TRANSCRIBE_MODEL
+    transcribe_language: str = DEFAULT_TRANSCRIBE_LANGUAGE
 
 
 @dataclass(slots=True)
@@ -82,6 +102,7 @@ class WeixinInboundMessage:
     text: str
     message_id: int | None
     create_time_ms: int | None
+    audio_attachments: list[AudioAttachment] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -111,6 +132,10 @@ def default_mirror_root() -> Path:
 
 def default_launch_agent_dir() -> Path:
     return Path.home() / "Library" / "LaunchAgents"
+
+
+def default_audio_cache_root() -> Path:
+    return default_bridge_root() / "audio"
 
 
 def load_bridge_state(path: Path) -> WeixinBridgeState:
@@ -217,21 +242,38 @@ def sync_workspace_mirror(source_workspace: Path, mirror_workspace: Path) -> Non
     rsync_bin = shutil.which("rsync")
     if not rsync_bin:
         raise WeixinBridgeError("rsync is required to maintain the optimized ASCII Codex mirror.")
-    command = [
-        rsync_bin,
-        "-a",
-        "--delete",
-        "--exclude",
-        ".git",
-        "--exclude",
-        ".DS_Store",
-        f"{source_workspace}/",
-        f"{mirror_workspace}/",
-    ]
-    process = subprocess.run(command, text=True, capture_output=True, check=False)
-    if process.returncode != 0:
-        detail = process.stderr.strip() or process.stdout.strip()
-        raise WeixinBridgeError(f"Failed to sync ASCII Codex mirror: {detail}")
+    with _acquire_mirror_sync_lock(mirror_workspace):
+        command = [
+            rsync_bin,
+            "-a",
+            "--delete",
+            "--exclude",
+            ".git",
+            "--exclude",
+            ".DS_Store",
+            f"{source_workspace}/",
+            f"{mirror_workspace}/",
+        ]
+        process = subprocess.run(command, text=True, capture_output=True, check=False)
+        if process.returncode != 0:
+            detail = process.stderr.strip() or process.stdout.strip()
+            raise WeixinBridgeError(f"Failed to sync ASCII Codex mirror: {detail}")
+
+
+@contextlib.contextmanager
+def _acquire_mirror_sync_lock(mirror_workspace: Path):
+    lock_path = mirror_workspace.parent / f".{mirror_workspace.name}.sync.lock"
+    with _MIRROR_LOCK_REGISTRY_GUARD:
+        thread_lock = _MIRROR_LOCK_REGISTRY.setdefault(str(lock_path), threading.Lock())
+
+    with thread_lock:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+", encoding="utf-8") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _ascii_slug(value: str) -> str:
@@ -390,13 +432,16 @@ class WeixinApiClient:
             "get_updates_buf": state.get_updates_buf or "",
             "base_info": self._base_info(),
         }
-        payload = self._post_json(
-            base_url=state.base_url,
-            endpoint="ilink/bot/getupdates",
-            body=body,
-            token=state.token,
-            timeout_ms=self.config.long_poll_timeout_ms,
-        )
+        try:
+            payload = self._post_json(
+                base_url=state.base_url,
+                endpoint="ilink/bot/getupdates",
+                body=body,
+                token=state.token,
+                timeout_ms=self.config.long_poll_timeout_ms,
+            )
+        except TimeoutError:
+            return {"ret": 0, "get_updates_buf": state.get_updates_buf or "", "msgs": []}
         if payload.get("ret") not in {None, 0} or payload.get("errcode") not in {None, 0}:
             raise WeixinBridgeError(
                 f"Weixin getupdates failed: ret={payload.get('ret')} errcode={payload.get('errcode')} errmsg={payload.get('errmsg')}"
@@ -417,14 +462,44 @@ class WeixinApiClient:
             },
             "base_info": self._base_info(),
         }
-        self._post_json(
+        payload = self._post_json(
             base_url=state.base_url,
             endpoint="ilink/bot/sendmessage",
             body=body,
             token=state.token,
             timeout_ms=15_000,
         )
+        ret = payload.get("ret")
+        errcode = payload.get("errcode")
+        if ret not in {None, 0} or errcode not in {None, 0}:
+            detail = f"ret={ret}" if errcode in {None, 0} else f"ret={ret} errcode={errcode}"
+            if ret == -2 or errcode == -2:
+                raise WeixinBridgeError(
+                    f"Weixin sendmessage rejected the outbound message ({detail}). "
+                    "The recipient likely needs to message the bot again before proactive delivery is allowed."
+                )
+            raise WeixinBridgeError(f"Weixin sendmessage failed: {detail}")
         return client_id
+
+    def download_attachment(self, state: WeixinBridgeState, *, url: str, timeout_ms: int = 30_000) -> bytes:
+        resolved_url = urllib.parse.urljoin(state.base_url.rstrip("/") + "/", url)
+        headers = {
+            "AuthorizationType": "ilink_bot_token",
+            "X-WECHAT-UIN": random_wechat_uin(),
+            **self._common_headers(),
+        }
+        if state.token.strip():
+            headers["Authorization"] = f"Bearer {state.token.strip()}"
+        request = urllib.request.Request(resolved_url, headers=headers, method="GET")
+        timeout_seconds = max(timeout_ms / 1000, 1)
+        try:
+            with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise WeixinBridgeError(f"Weixin attachment download failed with {exc.code}: {body}") from exc
+        except urllib.error.URLError as exc:
+            raise WeixinBridgeError(f"Weixin attachment download error: {exc.reason}") from exc
 
     def _post_json(
         self,
@@ -552,10 +627,27 @@ class CodexRunner:
 
 
 class WeixinCodexBridge:
-    def __init__(self, config: WeixinBridgeConfig, *, client: WeixinApiClient | None = None, runner: CodexRunner | None = None):
+    def __init__(
+        self,
+        config: WeixinBridgeConfig,
+        *,
+        client: WeixinApiClient | None = None,
+        runner: CodexRunner | None = None,
+        audio_transcriber: WeixinAudioTranscriber | None = None,
+    ):
         self.config = config
         self.client = client or WeixinApiClient(config)
         self.runner = runner or CodexRunner(config)
+        self.audio_transcriber = audio_transcriber or (
+            WeixinAudioTranscriber(
+                cache_root=config.audio_cache_root or default_audio_cache_root(),
+                transcribe_cli=Path(config.transcribe_cli).expanduser() if config.transcribe_cli else default_transcribe_cli_path(),
+                model=config.transcribe_model,
+                language=config.transcribe_language,
+            )
+            if config.enable_audio_transcription
+            else None
+        )
 
     def login(self, *, timeout_seconds: int = 480) -> dict[str, str]:
         qr = self.client.start_login()
@@ -602,10 +694,13 @@ class WeixinCodexBridge:
             peer.last_message_id = message.message_id
             peer.last_seen_at = iso_now()
 
-            if not message.text.strip():
+            prompt_text = message.text.strip()
+            if message.audio_attachments:
+                prompt_text = self._merge_audio_transcripts(state, message, existing_text=prompt_text)
+            if not prompt_text.strip():
                 continue
 
-            codex_reply = self.runner.ask(message.text, thread_id=peer.codex_thread_id)
+            codex_reply = self.runner.ask(prompt_text, thread_id=peer.codex_thread_id)
             peer.codex_thread_id = codex_reply.thread_id
             state.peers[message.from_user_id] = peer
             self.client.send_text(
@@ -624,6 +719,36 @@ class WeixinCodexBridge:
         save_bridge_state(self.config.state_path, state)
         return replies
 
+    def _merge_audio_transcripts(self, state: WeixinBridgeState, message: WeixinInboundMessage, *, existing_text: str) -> str:
+        if not self.audio_transcriber:
+            return existing_text
+        try:
+            transcripts = self.audio_transcriber.transcribe_attachments(
+                message.audio_attachments,
+                message_id=message.message_id,
+                downloader=lambda url, path: path.write_bytes(
+                    self.client.download_attachment(state, url=url)
+                ),
+            )
+        except AudioTranscriptionError as exc:
+            if not existing_text.strip():
+                self.client.send_text(
+                    state,
+                    to_user_id=message.from_user_id,
+                    context_token=message.context_token,
+                    text=truncate_for_wechat(f"Voice message received, but transcription is unavailable: {exc}"),
+                )
+            return existing_text
+
+        if not transcripts:
+            return existing_text
+        transcript_block = "\n\n".join(
+            f"[WeChat voice transcript {index}]\n{text}" for index, text in enumerate(transcripts, start=1)
+        )
+        if existing_text.strip():
+            return f"{existing_text.strip()}\n\n{transcript_block}"
+        return transcript_block
+
     def serve_forever(self, *, idle_sleep_seconds: float = 1.0) -> None:
         while True:
             self.handle_once()
@@ -640,6 +765,7 @@ def normalize_inbound_messages(payload: dict[str, Any]) -> list[WeixinInboundMes
         if not from_user_id or not to_user_id:
             continue
         text_parts: list[str] = []
+        audio_attachments = _extract_audio_attachments(raw)
         for item in raw.get("item_list", []) or []:
             if item.get("type") == 1 and item.get("text_item", {}).get("text"):
                 text_parts.append(str(item["text_item"]["text"]))
@@ -651,9 +777,108 @@ def normalize_inbound_messages(payload: dict[str, Any]) -> list[WeixinInboundMes
                 text="\n".join(part.strip() for part in text_parts if part.strip()),
                 message_id=raw.get("message_id"),
                 create_time_ms=raw.get("create_time_ms"),
+                audio_attachments=audio_attachments,
             )
         )
     return messages
+
+
+def _extract_audio_attachments(raw_message: dict[str, Any]) -> list[AudioAttachment]:
+    attachments: list[AudioAttachment] = []
+    seen_urls: set[str] = set()
+    for item in raw_message.get("item_list", []) or []:
+        url = _find_audio_url(item)
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        attachments.append(
+            AudioAttachment(
+                download_url=url,
+                file_name=_find_attachment_filename(item),
+                mime_type=_find_mime_type(item),
+                duration_ms=_find_duration_ms(item),
+                item_type=str(item.get("type") or ""),
+            )
+        )
+    return attachments
+
+
+def _find_audio_url(node: Any, *, key_path: str = "") -> str:
+    if isinstance(node, dict):
+        for key, value in node.items():
+            next_path = f"{key_path}.{key}" if key_path else str(key)
+            lowered_key = str(key).lower()
+            if isinstance(value, str) and value.strip():
+                if _looks_like_audio_url(value, key_hint=next_path) or _looks_like_audio_url(value, key_hint=lowered_key):
+                    return value.strip()
+            found = _find_audio_url(value, key_path=next_path)
+            if found:
+                return found
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            found = _find_audio_url(value, key_path=f"{key_path}[{index}]")
+            if found:
+                return found
+    return ""
+
+
+def _looks_like_audio_url(value: str, *, key_hint: str) -> bool:
+    lowered_value = value.strip().lower()
+    lowered_key = key_hint.lower()
+    if not (lowered_value.startswith("http://") or lowered_value.startswith("https://") or lowered_value.startswith("/")):
+        return False
+    if any(token in lowered_key for token in ("voice", "audio", "media", "play", "download")):
+        return True
+    return lowered_value.endswith((".amr", ".mp3", ".m4a", ".wav", ".aac", ".ogg", ".opus", ".silk"))
+
+
+def _find_attachment_filename(node: Any) -> str:
+    for key in ("file_name", "filename", "name", "title"):
+        value = _find_first_string(node, key)
+        if value:
+            return value
+    return ""
+
+
+def _find_mime_type(node: Any) -> str:
+    for key in ("mime_type", "content_type"):
+        value = _find_first_string(node, key)
+        if value:
+            return value
+    return ""
+
+
+def _find_duration_ms(node: Any) -> int | None:
+    for key in ("duration_ms", "duration", "voice_duration", "audio_duration"):
+        value = _find_first_scalar(node, key)
+        if value in {None, ""}:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _find_first_string(node: Any, target_key: str) -> str:
+    value = _find_first_scalar(node, target_key)
+    return str(value).strip() if isinstance(value, str) and str(value).strip() else ""
+
+
+def _find_first_scalar(node: Any, target_key: str) -> Any:
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if str(key).lower() == target_key.lower() and not isinstance(value, (dict, list)):
+                return value
+            nested = _find_first_scalar(value, target_key)
+            if nested is not None:
+                return nested
+    elif isinstance(node, list):
+        for value in node:
+            nested = _find_first_scalar(value, target_key)
+            if nested is not None:
+                return nested
+    return None
 
 
 def build_client_version(version: str) -> int:
@@ -689,12 +914,18 @@ def build_bridge_config(
     codex_sandbox: str = "read-only",
     optimize_latency: bool = True,
     mirror_root: Path | None = None,
+    audio_cache_root: Path | None = None,
     preamble: str | None = None,
     allow_from: list[str] | None = None,
+    enable_audio_transcription: bool = True,
+    transcribe_cli: str | None = None,
+    transcribe_model: str = DEFAULT_TRANSCRIBE_MODEL,
+    transcribe_language: str = DEFAULT_TRANSCRIBE_LANGUAGE,
 ) -> WeixinBridgeConfig:
     source_workspace = workspace.expanduser().resolve()
     resolved_state_path = (state_path or default_state_path()).expanduser().resolve()
     resolved_mirror_root = (mirror_root or default_mirror_root()).expanduser()
+    resolved_audio_cache_root = (audio_cache_root or default_audio_cache_root()).expanduser()
     resolved_codex_model = codex_model or DEFAULT_CODEX_MODEL
     resolved_reasoning_effort = codex_reasoning_effort or DEFAULT_CODEX_REASONING_EFFORT
     codex_workspace = ensure_codex_workspace(
@@ -712,6 +943,11 @@ def build_bridge_config(
         codex_sandbox=codex_sandbox,
         optimize_latency=optimize_latency,
         mirror_root=resolved_mirror_root,
+        audio_cache_root=resolved_audio_cache_root,
         preamble=preamble or WeixinBridgeConfig(state_path=Path("."), workspace=source_workspace, codex_workspace=codex_workspace).preamble,
         allow_from=set(allow_from or []),
+        enable_audio_transcription=enable_audio_transcription,
+        transcribe_cli=str((Path(transcribe_cli).expanduser() if transcribe_cli else default_transcribe_cli_path()).resolve()),
+        transcribe_model=transcribe_model or DEFAULT_TRANSCRIBE_MODEL,
+        transcribe_language=transcribe_language or DEFAULT_TRANSCRIBE_LANGUAGE,
     )

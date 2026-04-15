@@ -74,9 +74,33 @@ def parse_args() -> argparse.Namespace:
         help="Optional root directory for the optimized ASCII Codex mirror workspace.",
     )
     parser.add_argument(
+        "--audio-cache-root",
+        type=Path,
+        help="Optional directory for cached WeChat voice attachments and transcripts.",
+    )
+    parser.add_argument(
         "--no-optimize-latency",
         action="store_true",
         help="Disable the ASCII mirror optimization and run Codex directly in the source workspace.",
+    )
+    parser.add_argument(
+        "--disable-audio-transcription",
+        action="store_true",
+        help="Disable automatic transcription for inbound WeChat voice messages.",
+    )
+    parser.add_argument(
+        "--transcribe-cli",
+        help="Path to the transcribe_diarize.py CLI used for voice transcription.",
+    )
+    parser.add_argument(
+        "--transcribe-model",
+        default="gpt-4o-mini-transcribe",
+        help="OpenAI transcription model for WeChat voice messages.",
+    )
+    parser.add_argument(
+        "--transcribe-language",
+        default="zh",
+        help="Language hint passed to the transcription CLI. Defaults to zh.",
     )
     parser.add_argument("--allow-from", action="append", default=[], help="Restrict bridge to specific WeChat user IDs.")
     parser.add_argument("--preamble", help="Extra prompt prefix injected before each WeChat message.")
@@ -97,8 +121,13 @@ def main() -> int:
         codex_sandbox=args.codex_sandbox,
         optimize_latency=not args.no_optimize_latency,
         mirror_root=args.mirror_root,
+        audio_cache_root=args.audio_cache_root,
         preamble=args.preamble,
         allow_from=args.allow_from,
+        enable_audio_transcription=not args.disable_audio_transcription,
+        transcribe_cli=args.transcribe_cli,
+        transcribe_model=args.transcribe_model,
+        transcribe_language=args.transcribe_language,
     )
     bridge = WeixinCodexBridge(config)
 

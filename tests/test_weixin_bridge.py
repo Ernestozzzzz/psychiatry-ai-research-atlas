@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import plistlib
+import threading
+import time
 from pathlib import Path
 
+from intel_center.audio_transcription import AudioAttachment
 from intel_center.weixin_bridge import (
     CodexReply,
     CodexRunner,
@@ -10,6 +13,7 @@ from intel_center.weixin_bridge import (
     WeixinBridgeState,
     WeixinCodexBridge,
     WeixinBridgeConfig,
+    WeixinApiClient,
     WeixinPeerSession,
     assess_codex_ping_result,
     build_bridge_config,
@@ -23,6 +27,7 @@ from intel_center.weixin_bridge import (
     resolve_codex_bin,
     save_bridge_state,
     send_push_text,
+    sync_workspace_mirror,
     summarize_bridge_log_health,
 )
 
@@ -46,6 +51,10 @@ class FakeWeixinClient:
         )
         return "client-1"
 
+    def download_attachment(self, state, *, url: str, timeout_ms: int = 30_000):
+        del state, timeout_ms
+        return f"audio:{url}".encode("utf-8")
+
 
 class FakeCodexRunner:
     def __init__(self):
@@ -54,6 +63,16 @@ class FakeCodexRunner:
     def ask(self, user_prompt: str, *, thread_id: str = "") -> CodexReply:
         self.calls.append({"user_prompt": user_prompt, "thread_id": thread_id})
         return CodexReply(thread_id=thread_id or "thread-123", text=f"echo:{user_prompt}")
+
+
+class FakeAudioTranscriber:
+    def __init__(self, transcripts: list[str] | None = None):
+        self.calls: list[dict] = []
+        self.transcripts = transcripts or ["语音转写内容"]
+
+    def transcribe_attachments(self, attachments, *, message_id: int | None, downloader):
+        self.calls.append({"attachments": attachments, "message_id": message_id})
+        return list(self.transcripts)
 
 
 def test_build_client_version_matches_openclaw_encoding() -> None:
@@ -97,6 +116,35 @@ def test_normalize_inbound_messages_extracts_text() -> None:
     assert len(messages) == 1
     assert messages[0].text == "hello\nworld"
     assert messages[0].context_token == "ctx-1"
+
+
+def test_normalize_inbound_messages_extracts_audio_attachments() -> None:
+    payload = {
+        "msgs": [
+            {
+                "from_user_id": "alice@im.wechat",
+                "to_user_id": "bot@im.bot",
+                "context_token": "ctx-voice",
+                "message_id": 124,
+                "create_time_ms": 457,
+                "item_list": [
+                    {
+                        "type": 34,
+                        "voice_item": {
+                            "download_url": "https://example.org/voice.amr",
+                            "file_name": "voice.amr",
+                            "duration_ms": 2100,
+                        },
+                    }
+                ],
+            }
+        ]
+    }
+    messages = normalize_inbound_messages(payload)
+    assert len(messages) == 1
+    assert messages[0].audio_attachments
+    assert messages[0].audio_attachments[0].download_url == "https://example.org/voice.amr"
+    assert messages[0].audio_attachments[0].file_name == "voice.amr"
 
 
 def test_bridge_handle_once_binds_peer_to_codex_thread(tmp_path: Path) -> None:
@@ -175,6 +223,48 @@ def test_bridge_reuses_existing_codex_thread(tmp_path: Path) -> None:
     assert runner.calls == [{"user_prompt": "继续", "thread_id": "thread-1"}]
     loaded = load_bridge_state(state_path)
     assert loaded.peers["alice@im.wechat"].context_token == "ctx-new"
+
+
+def test_bridge_transcribes_audio_before_forwarding_to_codex(tmp_path: Path) -> None:
+    state_path = tmp_path / "bridge-state.json"
+    save_bridge_state(
+        state_path,
+        WeixinBridgeState(token="token-1", bot_account_id="bot-1", user_id="user-1", base_url="https://example.com"),
+    )
+    updates = {
+        "ret": 0,
+        "get_updates_buf": "cursor-audio",
+        "msgs": [
+            {
+                "from_user_id": "alice@im.wechat",
+                "to_user_id": "bot@im.bot",
+                "context_token": "ctx-audio",
+                "message_id": 188,
+                "create_time_ms": 223344,
+                "item_list": [
+                    {
+                        "type": 34,
+                        "voice_item": {
+                            "download_url": "https://example.org/voice.amr",
+                            "file_name": "voice.amr",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    client = FakeWeixinClient(updates)
+    runner = FakeCodexRunner()
+    transcriber = FakeAudioTranscriber(["这是微信语音的转写"])
+    config = build_bridge_config(workspace=tmp_path, state_path=state_path)
+    bridge = WeixinCodexBridge(config, client=client, runner=runner, audio_transcriber=transcriber)
+
+    replies = bridge.handle_once()
+
+    assert len(replies) == 1
+    assert transcriber.calls[0]["message_id"] == 188
+    assert runner.calls == [{"user_prompt": "[WeChat voice transcript 1]\n这是微信语音的转写", "thread_id": ""}]
+    assert client.sent_messages[0]["text"] == "echo:[WeChat voice transcript 1]\n这是微信语音的转写"
 
 
 def test_build_bridge_config_uses_fast_codex_defaults(tmp_path: Path) -> None:
@@ -315,3 +405,81 @@ def test_send_push_text_targets_known_peers(tmp_path: Path) -> None:
             "token": "token-1",
         }
     ]
+
+
+def test_sync_workspace_mirror_serializes_concurrent_calls(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "README.md").write_text("mirror me", encoding="utf-8")
+    mirror = tmp_path / "mirror"
+    active_calls = 0
+    max_active_calls = 0
+    call_guard = threading.Lock()
+
+    def fake_run(command, *, text, capture_output, check):
+        nonlocal active_calls, max_active_calls
+        del command, text, capture_output, check
+        with call_guard:
+            active_calls += 1
+            max_active_calls = max(max_active_calls, active_calls)
+        time.sleep(0.05)
+        mirror.mkdir(parents=True, exist_ok=True)
+        (mirror / "README.md").write_text("mirror me", encoding="utf-8")
+        with call_guard:
+            active_calls -= 1
+
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr("intel_center.weixin_bridge.shutil.which", lambda value: "/usr/bin/rsync")
+    monkeypatch.setattr("intel_center.weixin_bridge.subprocess.run", fake_run)
+
+    thread_one = threading.Thread(target=sync_workspace_mirror, args=(source, mirror))
+    thread_two = threading.Thread(target=sync_workspace_mirror, args=(source, mirror))
+    thread_one.start()
+    thread_two.start()
+    thread_one.join()
+    thread_two.join()
+
+    assert max_active_calls == 1
+    assert (mirror / "README.md").read_text(encoding="utf-8") == "mirror me"
+
+
+def test_weixin_get_updates_treats_timeout_as_empty_poll(tmp_path: Path, monkeypatch) -> None:
+    config = build_bridge_config(workspace=tmp_path, state_path=tmp_path / "state.json")
+    client = WeixinApiClient(config)
+    state = WeixinBridgeState(token="token-1", base_url="https://example.com", get_updates_buf="cursor-1")
+
+    def raise_timeout(**kwargs):
+        del kwargs
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(client, "_post_json", raise_timeout)
+
+    updates = client.get_updates(state)
+
+    assert updates == {"ret": 0, "get_updates_buf": "cursor-1", "msgs": []}
+
+
+def test_weixin_send_text_raises_when_api_rejects_message(tmp_path: Path, monkeypatch) -> None:
+    config = build_bridge_config(workspace=tmp_path, state_path=tmp_path / "state.json")
+    client = WeixinApiClient(config)
+    state = WeixinBridgeState(token="token-1", base_url="https://example.com")
+
+    def reject_message(**kwargs):
+        del kwargs
+        return {"ret": -2}
+
+    monkeypatch.setattr(client, "_post_json", reject_message)
+
+    try:
+        client.send_text(state, to_user_id="alice@im.wechat", context_token="ctx-1", text="hello")
+    except Exception as exc:
+        assert "ret=-2" in str(exc)
+        assert "message the bot again" in str(exc)
+    else:
+        raise AssertionError("Expected send_text to raise when Weixin rejects outbound delivery.")
