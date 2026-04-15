@@ -1,13 +1,24 @@
 {
   "journals": {
     "jama psychiatry": {
-      "quartile": "Q1"
+      "quartile": "Q1",
+      "top_tier": true
     },
     "world psychiatry": {
-      "quartile": "Q1"
+      "quartile": "Q1",
+      "top_tier": true
     },
     "the lancet psychiatry": {
-      "quartile": "Q1"
+      "quartile": "Q1",
+      "top_tier": true
+    },
+    "american journal of psychiatry": {
+      "quartile": "Q1",
+      "top_tier": true
+    },
+    "nature mental health": {
+      "quartile": "Q1",
+      "top_tier": true
     },
     "psychological medicine": {
       "quartile": "Q1"
@@ -46,7 +57,8 @@
       "quartile": "Q1"
     },
     "molecular psychiatry": {
-      "quartile": "Q1"
+      "quartile": "Q1",
+      "top_tier": true
     },
     "behaviour research and therapy": {
       "quartile": "Q1"

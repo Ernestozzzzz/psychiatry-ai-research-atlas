@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+from html import unescape
 from io import StringIO
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
@@ -86,6 +87,11 @@ def _build_item(
         journal_quartile=journal_quartile.strip(),
         impact_factor=str(impact_factor).strip() if impact_factor else "",
         venue_type=venue_type.strip(),
+        evidence_level=source.evidence_level,
+        source_class=source.source_class,
+        source_admission_status=source.admission_status,
+        curation_tier=source.curation_tier,
+        is_archive=source.source_class == "archive",
     )
 
 
@@ -172,6 +178,70 @@ def parse_europe_pmc(source: SourceDefinition, payload: str) -> list[IntelItem]:
     return items
 
 
+def parse_psyarxiv_json(source: SourceDefinition, payload: str) -> list[IntelItem]:
+    try:
+        blob = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise FetchError(f"{source.id}: invalid PsyArXiv JSON") from exc
+
+    items: list[IntelItem] = []
+    for result in blob.get("data", []):
+        attributes = result.get("attributes", {})
+        links = result.get("links", {})
+        title = (attributes.get("title") or "").strip()
+        url = (links.get("html") or "").strip()
+        if not title or not url:
+            continue
+        published = attributes.get("date_published") or attributes.get("date_modified") or attributes.get("date_created")
+        summary = attributes.get("description") or ""
+        item = _build_item(
+            source,
+            title,
+            url,
+            published,
+            summary,
+            journal_name="PsyArXiv",
+            venue_type="preprint",
+        )
+        items.append(item)
+    return items
+
+
+def parse_neuroblu_publications(source: SourceDefinition, payload: str) -> list[IntelItem]:
+    items: list[IntelItem] = []
+    pattern = re.compile(
+        r'<p[^>]+class="overline publications">(?P<journal>.*?)</p>.*?'
+        r'<h3 class="heading-4 publications">(?P<title>.*?)</h3>.*?'
+        r'(?:<p[^>]+class="details body-1">(?P<authors>.*?)</p>.*?)*'
+        r'<a[^>]+href="(?P<url>[^"]+)"[^>]*>.*?<p[^>]+class="date body-1">(?P<date>.*?)</p>.*?</a>.*?'
+        r'<div class="text-block">(?P<label>.*?)</div>',
+        flags=re.DOTALL,
+    )
+    author_pattern = re.compile(r'<p[^>]+class="details body-1">(?P<authors>.*?)</p>', flags=re.DOTALL)
+    for match in pattern.finditer(payload):
+        title = _strip_html(unescape(match.group("title")))
+        url = unescape(match.group("url")).strip()
+        published = _strip_html(unescape(match.group("date")))
+        venue_label = _strip_html(unescape(match.group("label"))).lower()
+        journal_name = _strip_html(unescape(match.group("journal"))) or "NeuroBlu"
+        author_match = author_pattern.search(match.group(0))
+        author_text = _strip_html(unescape(author_match.group("authors"))) if author_match else ""
+        venue_type = "journal" if "peer-reviewed" in venue_label else "preprint" if "conference abstract" in venue_label else "institution"
+        summary = author_text or f"{journal_name} · {venue_label.title()}"
+        items.append(
+            _build_item(
+                source,
+                title,
+                url,
+                published,
+                summary,
+                journal_name=journal_name,
+                venue_type=venue_type,
+            )
+        )
+    return items
+
+
 def fetch_source_items(
     source: SourceDefinition,
     loader: Callable[[str], str] = default_loader,
@@ -201,6 +271,10 @@ def fetch_source_items(
             return _fetch_pubmed_items(source, loader, date_cutoff=date_cutoff)
         if source.kind == "europe_pmc":
             return _fetch_europe_pmc_items(source, loader, date_cutoff=date_cutoff)
+        if source.kind == "psyarxiv":
+            return _fetch_psyarxiv_items(source, loader, date_cutoff=date_cutoff)
+        if source.kind == "html_publications":
+            return _fetch_html_publications(source, loader, date_cutoff=date_cutoff)
         if source.kind in {"rss", "atom"}:
             if not source.url:
                 raise FetchError(f"{source.id}: missing URL")
@@ -318,6 +392,47 @@ def _apply_date_cutoff(items: list[IntelItem], date_cutoff: datetime | None) -> 
     if not date_cutoff:
         return items
     return [item for item in items if item.published_at >= date_cutoff]
+
+
+def _fetch_psyarxiv_items(
+    source: SourceDefinition,
+    loader: Callable[[str], str],
+    *,
+    date_cutoff: datetime | None,
+) -> list[IntelItem]:
+    base_url = source.url or "https://api.osf.io/v2/preprints/?filter%5Bprovider%5D=psyarxiv"
+    items: list[IntelItem] = []
+    for page in range(1, max(source.max_pages, 1) + 1):
+        url = _replace_query_params(
+            base_url,
+            {
+                "page[size]": str(source.page_size),
+                "page": str(page),
+            },
+        )
+        page_items = parse_psyarxiv_json(source, loader(url))
+        if not page_items:
+            break
+        items.extend(page_items)
+        if date_cutoff:
+            oldest = min(item.published_at for item in page_items)
+            if oldest < date_cutoff:
+                break
+        if len(page_items) < source.page_size:
+            break
+    return _apply_date_cutoff(items, date_cutoff)
+
+
+def _fetch_html_publications(
+    source: SourceDefinition,
+    loader: Callable[[str], str],
+    *,
+    date_cutoff: datetime | None,
+) -> list[IntelItem]:
+    if not source.url:
+        raise FetchError(f"{source.id}: missing URL")
+    items = parse_neuroblu_publications(source, loader(source.url))
+    return _apply_date_cutoff(items, date_cutoff)
 
 
 def _replace_query_params(url: str, updates: dict[str, str]) -> str:

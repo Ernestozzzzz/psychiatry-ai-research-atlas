@@ -6,6 +6,41 @@ from pathlib import Path
 
 
 @dataclass(slots=True)
+class CandidateDefinition:
+    candidate_id: str
+    candidate_type: str
+    name: str
+    homepage_url: str
+    source_repo_url: str | None = None
+    official_docs_url: str | None = None
+    execution_mode: str = "hosted"
+    data_sources_declared: list[str] = field(default_factory=list)
+    trust_notes: list[str] = field(default_factory=list)
+    scope_tags: list[str] = field(default_factory=list)
+    status: str = "candidate"
+    last_reviewed_at: str | None = None
+    scores: dict[str, float] = field(default_factory=dict)
+    key_risks: list[str] = field(default_factory=list)
+    borrow_notes: list[str] = field(default_factory=list)
+    suitable_for: list[str] = field(default_factory=list)
+    review_recommendation: str = ""
+
+
+@dataclass(slots=True)
+class CandidateEvaluation:
+    candidate_id: str
+    dimension_scores: dict[str, float]
+    weighted_total: float
+    admission_score: float
+    admission_status: str
+    implementation_recommendation: str
+    key_risks: list[str] = field(default_factory=list)
+    borrow_notes: list[str] = field(default_factory=list)
+    suitable_for: list[str] = field(default_factory=list)
+    review_recommendation: str = ""
+
+
+@dataclass(slots=True)
 class SourceDefinition:
     id: str
     name: str
@@ -18,6 +53,11 @@ class SourceDefinition:
     max_pages: int = 1
     tags: list[str] = field(default_factory=list)
     topic_keys: list[str] = field(default_factory=list)
+    source_class: str = "database"
+    admission_status: str = "adopt"
+    evidence_level: str = "peer_reviewed"
+    curation_tier: str = "curated"
+    candidate_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -58,6 +98,16 @@ class IntelItem:
     clinical_relevance: float = 0.0
     idea_potential_score: float = 0.0
     importance_score: float = 0.0
+    item_importance_score: float = 0.0
+    admission_score: float = 0.0
+    evidence_level: str = "unknown"
+    source_class: str = "database"
+    source_admission_status: str = "candidate"
+    curation_tier: str = "curated"
+    curation_bucket: str = "raw_intake"
+    screening_notes: list[str] = field(default_factory=list)
+    is_archive: bool = False
+    is_top_journal: bool = False
     corroborating_sources: list[str] = field(default_factory=list)
 
 
@@ -109,7 +159,10 @@ class RunResult:
     generated_at: datetime
     artifacts: RunArtifacts
     selected_items: list[IntelItem]
+    curated_items: list[IntelItem]
+    raw_intake_items: list[IntelItem]
     missing_sources: list[str]
+    candidate_evaluations: list[CandidateEvaluation] = field(default_factory=list)
     executive_summary_bullets: list[str] = field(default_factory=list)
     llm_enhancement: LLMEnhancement | None = None
     llm_error: str | None = None

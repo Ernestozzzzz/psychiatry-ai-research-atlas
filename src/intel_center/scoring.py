@@ -157,6 +157,13 @@ TRUSTED_DOMAINS = {
     "fda.gov",
     "who.int",
     "arxiv.org",
+    "osf.io",
+    "psychiatryonline.org",
+    "wiley.com",
+    "onlinelibrary.wiley.com",
+    "sagepub.com",
+    "biologicalpsychiatryjournal.com",
+    "mitpressjournals.org",
 }
 
 
@@ -183,6 +190,7 @@ def enrich_and_score_items(items: list[IntelItem], config: ProjectConfig, now: d
         _apply_journal_metadata(item, config)
         item.quality_tier = _quality_tier(item)
         venue_bonus = _venue_bonus(item)
+        item.evidence_level = _item_evidence_level(item)
 
         item.matched_topics = matched_topics
         item.matched_topics_zh = matched_topics_zh
@@ -205,6 +213,7 @@ def enrich_and_score_items(items: list[IntelItem], config: ProjectConfig, now: d
             item.importance_score + venue_bonus,
             3,
         )
+        item.item_importance_score = item.importance_score
         item.card_summary_en = _build_card_summary_en(item)
         item.card_summary_zh = _build_card_summary_zh(item)
         item.summary_zh = item.card_summary_zh
@@ -247,6 +256,38 @@ def filter_dashboard_items(items: list[IntelItem]) -> list[IntelItem]:
     filtered = [item for item in items if _is_dashboard_candidate(item) and _passes_quality_gate(item)]
     filtered.sort(key=lambda entry: (entry.importance_score, entry.published_at), reverse=True)
     return filtered
+
+
+def split_curated_and_raw_items(
+    items: list[IntelItem],
+    config: ProjectConfig,
+    *,
+    top_n: int,
+    min_primary_research_items: int,
+    max_macro_items: int,
+    max_preprint_items: int = 72,
+    max_items_per_source: int = 18,
+    raw_intake_top_n: int = 240,
+) -> tuple[list[IntelItem], list[IntelItem]]:
+    candidates = filter_dashboard_items(items)
+    curated_pool = [item for item in candidates if _passes_curated_gate(item, config)]
+    curated = select_top_items(
+        curated_pool,
+        top_n=top_n,
+        min_primary_research_items=min_primary_research_items,
+        max_macro_items=max_macro_items,
+        max_preprint_items=max_preprint_items,
+        max_items_per_source=max_items_per_source,
+    )
+    curated_ids = {item.id for item in curated}
+    for item in curated:
+        item.curation_bucket = "curated"
+
+    raw = [item for item in candidates if item.id not in curated_ids]
+    for item in raw:
+        item.curation_bucket = "raw_intake"
+    raw.sort(key=lambda entry: (entry.published_at, entry.importance_score), reverse=True)
+    return curated, raw[:raw_intake_top_n]
 
 
 def select_top_items(
@@ -366,6 +407,8 @@ def _build_importance_reason_en(item: IntelItem) -> str:
         signals.append("peer-reviewed venue")
     elif item.venue_type == "preprint":
         signals.append("preprint")
+    if item.is_top_journal:
+        signals.append("top journal whitelist")
     if item.journal_quartile:
         signals.append(item.journal_quartile)
     if item.impact_factor:
@@ -380,6 +423,8 @@ def _build_importance_reason_zh(item: IntelItem) -> str:
         signals.append("同行评议期刊")
     elif item.venue_type == "preprint":
         signals.append("预印本")
+    if item.is_top_journal:
+        signals.append("顶级期刊白名单")
     if item.journal_quartile:
         signals.append(item.journal_quartile)
     if item.impact_factor:
@@ -432,6 +477,7 @@ def _apply_journal_metadata(item: IntelItem, config: ProjectConfig) -> None:
         item.journal_quartile = str(metadata["quartile"])
     if metadata.get("impact_factor") and not item.impact_factor:
         item.impact_factor = str(metadata["impact_factor"])
+    item.is_top_journal = bool(metadata.get("top_tier", False))
 
 
 def _venue_bonus(item: IntelItem) -> float:
@@ -469,6 +515,16 @@ def _quality_tier(item: IntelItem) -> str:
     return "unknown"
 
 
+def _item_evidence_level(item: IntelItem) -> str:
+    if item.venue_type == "journal":
+        return "peer_reviewed"
+    if item.venue_type == "preprint":
+        return "preprint"
+    if item.venue_type == "institution":
+        return "institutional"
+    return item.evidence_level
+
+
 def _condense_summary(text: str, *, limit: int = 148) -> str:
     cleaned = re.sub(r"\s+", " ", text).strip()
     if not cleaned:
@@ -496,6 +552,65 @@ def _passes_quality_gate(item: IntelItem) -> bool:
             return True
         return False
     return _trusted_domain(item.url)
+
+
+def _passes_curated_gate(item: IntelItem, config: ProjectConfig) -> bool:
+    if item.source_admission_status == "reject":
+        item.screening_notes.append("Source rejected by admission layer.")
+        return False
+
+    if item.curation_tier == "raw_only":
+        item.screening_notes.append("Archive source stays in raw intake unless a promotion rule fires.")
+    if item.is_archive:
+        promoted = _archive_promotion_rule(item, config)
+        if not promoted:
+            item.screening_notes.append("Archive item kept in raw intake because it lacks promotion evidence.")
+        return promoted
+
+    if item.venue_type != "journal":
+        if item.venue_type == "institution" and item.corroborating_sources:
+            item.screening_notes.append("Institutional item promoted because it is corroborated by another source.")
+            return True
+        item.screening_notes.append("Non-journal item kept in raw intake.")
+        return False
+
+    if item.is_top_journal:
+        item.screening_notes.append("Promoted by top-journal whitelist.")
+        return True
+    if item.quality_tier in {"high", "solid"}:
+        item.screening_notes.append("Promoted by journal quality tier.")
+        return True
+    if item.source_class == "publications_page" and item.corroborating_sources:
+        item.screening_notes.append("Promoted because a specialty source is corroborated elsewhere.")
+        return True
+    item.screening_notes.append("Journal item did not meet curated threshold.")
+    return False
+
+
+def _archive_promotion_rule(item: IntelItem, config: ProjectConfig) -> bool:
+    if item.is_top_journal:
+        item.screening_notes.append("Archive item linked to a top-journal venue.")
+        return True
+    if item.study_type in {"review", "trial", "cohort", "policy"}:
+        item.screening_notes.append("Archive item promoted by study-type rule.")
+        return True
+    trusted_corroboration = {
+        "pubmed",
+        "europe pmc",
+        "europepmc",
+        "neuroblu",
+        "pubmed psychiatry + ai",
+        "pubmed psychology + ai",
+        "neuroblu publications",
+    }
+    corroborating = " ".join([item.source, *item.corroborating_sources]).lower()
+    if any(token in corroborating for token in trusted_corroboration):
+        item.screening_notes.append("Archive item promoted by corroboration from a higher-trust source.")
+        return True
+    if item.journal_name and config.journal_rankings.get(item.journal_name.strip().lower(), {}).get("top_tier"):
+        item.screening_notes.append("Archive item promoted by whitelist-matched journal metadata.")
+        return True
+    return False
 
 
 def _trusted_domain(url: str) -> bool:

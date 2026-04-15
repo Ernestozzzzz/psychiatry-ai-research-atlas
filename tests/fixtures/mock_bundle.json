@@ -49,6 +49,27 @@
         "venue_type": "preprint"
       }
     ],
+    "psyarxiv_mental_health_ai": [
+      {
+        "title": "Large language model prompt benchmark for anxiety journaling classification in digital mental health apps",
+        "url": "https://osf.io/preprints/psyarxiv/abcd1/",
+        "published_at": "2026-03-05T12:00:00+00:00",
+        "summary": "A PsyArXiv preprint benchmarks large language model prompts for anxiety and depression journaling classification.",
+        "journal": "PsyArXiv",
+        "venue_type": "preprint"
+      }
+    ],
+    "neuroblu_publications": [
+      {
+        "title": "Machine learning quantifies cardiovascular risk and bipolar disorder treatment interactions in NeuroBlu records",
+        "url": "https://www.biologicalpsychiatryjournal.com/article/S0006-3223(25)00319-1/abstract",
+        "published_at": "2026-02-20T10:00:00+00:00",
+        "summary": "A NeuroBlu-linked peer-reviewed paper uses machine learning to study bipolar disorder and cardiovascular complications.",
+        "journal": "Biological Psychiatry",
+        "journal_quartile": "Q1",
+        "venue_type": "journal"
+      }
+    ],
     "nimh_news": [
       {
         "title": "NIMH funds AI-enabled digital phenotyping consortium for mood and psychosis monitoring",

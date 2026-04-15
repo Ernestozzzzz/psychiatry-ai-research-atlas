@@ -63,12 +63,15 @@ def build_dashboard_payload(
     run_date: str,
     generated_at: datetime,
     days_back: int,
-    items: list[IntelItem],
+    curated_items: list[IntelItem],
+    raw_intake_items: list[IntelItem],
     missing_sources: list[str],
     executive_summary: dict[str, list[str]],
     initial_render_count: int,
     llm_note: str | None = None,
+    candidate_evaluations: dict | None = None,
 ) -> dict:
+    items = [*curated_items, *raw_intake_items]
     track_counts = {track: sum(1 for item in items if item.track == track) for track in TRACK_LABELS}
     quality_counts = {
         "high_signal": sum(1 for item in items if item.quality_tier in {"high", "solid"}),
@@ -100,6 +103,8 @@ def build_dashboard_payload(
         "initial_render_count": initial_render_count,
         "stats": {
             "item_count": len(items),
+            "curated_count": len(curated_items),
+            "raw_intake_count": len(raw_intake_items),
             "frontier_count": track_counts["frontier_core"],
             "clinical_count": track_counts["current_program"],
             "signal_count": track_counts["enabling_signals"],
@@ -120,7 +125,10 @@ def build_dashboard_payload(
             for track in TRACK_LABELS
         ],
         "months": months,
-        "items": [_serialize_item(item) for item in items],
+        "items": [_serialize_item(item) for item in curated_items],
+        "curated_items": [_serialize_item(item) for item in curated_items],
+        "raw_intake_items": [_serialize_item(item) for item in raw_intake_items],
+        "candidate_report": candidate_evaluations or {"summary": {}, "entries": []},
     }
 
 
@@ -336,6 +344,11 @@ def render_dashboard_html(payload: dict) -> str:
     }}
     .stream-title {{ margin: 0; font-size: 1.7rem; }}
     .stream-note {{ color: var(--muted); font-size: 0.94rem; }}
+    .section-divider {{
+      margin: 28px 0 16px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(19, 33, 27, 0.12);
+    }}
     .card-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }}
     .intel-card {{
       border: 1px solid var(--line);
@@ -412,6 +425,54 @@ def render_dashboard_html(payload: dict) -> str:
       padding: 28px;
       color: var(--muted);
       background: rgba(255,255,255,0.45);
+    }}
+    .raw-list, .candidate-table {{
+      display: grid;
+      gap: 12px;
+    }}
+    .raw-card, .candidate-card {{
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      background: rgba(255,255,255,0.72);
+    }}
+    .candidate-head {{
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }}
+    .candidate-name {{
+      font-weight: 700;
+      font-size: 1rem;
+    }}
+    .candidate-status {{
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 0.78rem;
+      background: rgba(31, 90, 69, 0.1);
+      color: var(--accent);
+    }}
+    .candidate-status[data-status="review"] {{
+      background: rgba(168, 106, 61, 0.14);
+      color: #7a5416;
+    }}
+    .candidate-status[data-status="reject"] {{
+      background: rgba(142, 67, 56, 0.14);
+      color: #7a3024;
+    }}
+    .inline-links {{
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }}
+    .inline-links a {{
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 700;
     }}
     .load-more-wrap {{ display: flex; justify-content: center; margin-top: 18px; }}
     .load-more {{
@@ -501,8 +562,8 @@ def render_dashboard_html(payload: dict) -> str:
           </div>
         </div>
         <div class="stream-header">
-          <h2 class="stream-title" id="stream-title">Archive Feed</h2>
-          <div class="stream-note" id="stream-note">Default view shows high-signal papers first. Choose a month or keep scrolling to load more cards.</div>
+          <h2 class="stream-title" id="stream-title">Curated Brief</h2>
+          <div class="stream-note" id="stream-note">Default view shows curated, high-signal papers first. Choose a month or keep scrolling to load more cards.</div>
         </div>
         <div class="card-grid" id="card-grid"></div>
         <div class="empty-state" id="empty-state" hidden></div>
@@ -510,6 +571,22 @@ def render_dashboard_html(payload: dict) -> str:
           <button class="load-more" id="load-more" hidden>Load more</button>
         </div>
         <div id="feed-sentinel"></div>
+
+        <section class="section-divider">
+          <div class="stream-header">
+            <h2 class="stream-title" id="raw-stream-title">Raw Intake</h2>
+            <div class="stream-note" id="raw-stream-note">New archive and specialty-source items that did not pass curated promotion yet.</div>
+          </div>
+          <div class="raw-list" id="raw-list"></div>
+        </section>
+
+        <section class="section-divider">
+          <div class="stream-header">
+            <h2 class="stream-title" id="candidate-stream-title">Admission Report</h2>
+            <div class="stream-note" id="candidate-stream-note">Every external skill, archive, and source is scored before it is trusted in the system.</div>
+          </div>
+          <div class="candidate-table" id="candidate-table"></div>
+        </section>
       </main>
     </div>
   </div>
@@ -537,12 +614,16 @@ def render_dashboard_html(payload: dict) -> str:
         monthAll: 'All months',
         sortBest: 'Best first',
         sortNewest: 'Newest first',
-        streamTitle: 'Archive Feed',
-        streamNote: 'Default view shows high-signal papers first. Choose a month or keep scrolling to load more cards.',
+        streamTitle: 'Curated Brief',
+        streamNote: 'Default view shows curated, high-signal papers first. Choose a month or keep scrolling to load more cards.',
+        rawStreamTitle: 'Raw Intake',
+        rawStreamNote: 'New archive and specialty-source items that did not pass curated promotion yet.',
+        candidateStreamTitle: 'Admission Report',
+        candidateStreamNote: 'Every external skill, archive, and source is scored before it is trusted in the system.',
         runDate: `Run date: ${{payload.run_date}}`,
         coverageWindow: 'Coverage window: last 12 months',
         publishedRange: `Published range: ${{payload.coverage.start}} to ${{payload.coverage.end}}`,
-        itemCount: `Items in archive: ${{payload.stats.item_count}}`,
+        itemCount: `Items tracked: ${{payload.stats.item_count}} · curated ${{payload.stats.curated_count}} · raw ${{payload.stats.raw_intake_count}}`,
         sourceUnavailableTitle: 'Unavailable Sources',
         sourceUnavailableCopy: 'These sources failed in the current run. The page stays selective instead of filling gaps with weaker content.',
         legendFrontier: 'Green border: frontier research',
@@ -551,6 +632,11 @@ def render_dashboard_html(payload: dict) -> str:
         legendHigh: 'Gold badge: Q1 / highest-trust venue',
         legendPreprint: 'Plum badge: preprint',
         openSource: 'Open source ↗',
+        candidateLinks: 'Reference links',
+        candidateScore: 'Admission score',
+        candidateRecommendation: 'Recommendation',
+        candidateRisks: 'Key risks',
+        rawEmpty: 'No raw-intake items remain after curated selection in this run.',
         loadMore: 'Load more',
         noItems: 'No strong items match the current track / month filter.',
         signalLinePrefix: 'Signal',
@@ -578,12 +664,16 @@ def render_dashboard_html(payload: dict) -> str:
         monthAll: '全部月份',
         sortBest: '优先高质量',
         sortNewest: '最新优先',
-        streamTitle: '档案信息流',
-        streamNote: '首页默认优先显示高信号论文。你可以选择月份，也可以继续滚动加载更多卡片。',
+        streamTitle: '精选汇报',
+        streamNote: '首页默认优先显示精选且高信号的论文。你可以选择月份，也可以继续滚动加载更多卡片。',
+        rawStreamTitle: '原始收录',
+        rawStreamNote: '这里保留本轮抓到但尚未升入精选层的 archive 与专题来源条目。',
+        candidateStreamTitle: '准入汇报',
+        candidateStreamNote: '每个外部 skill、archive 和 source 都先过筛选量表，再决定是否信任。',
         runDate: `生成日期：${{payload.run_date}}`,
         coverageWindow: '覆盖窗口：最近 12 个月',
         publishedRange: `发布时间范围：${{payload.coverage.start}} 至 ${{payload.coverage.end}}`,
-        itemCount: `档案条目：${{payload.stats.item_count}}`,
+        itemCount: `本轮条目：${{payload.stats.item_count}} · 精选 ${{payload.stats.curated_count}} · 原始收录 ${{payload.stats.raw_intake_count}}`,
         sourceUnavailableTitle: '不可用来源',
         sourceUnavailableCopy: '这些来源本轮抓取失败，所以页面会保持克制，不会用弱相关内容补位。',
         legendFrontier: '绿色边框：前沿研究',
@@ -592,6 +682,11 @@ def render_dashboard_html(payload: dict) -> str:
         legendHigh: '金色 badge：Q1 / 高信任度期刊',
         legendPreprint: '紫色 badge：预印本',
         openSource: '打开原文 ↗',
+        candidateLinks: '参考链接',
+        candidateScore: '准入分数',
+        candidateRecommendation: '处理结论',
+        candidateRisks: '主要风险',
+        rawEmpty: '本轮没有剩余原始收录条目。',
         loadMore: '加载更多',
         noItems: '当前轨道或月份筛选下没有足够强的条目。',
         signalLinePrefix: '信号',
@@ -619,6 +714,8 @@ def render_dashboard_html(payload: dict) -> str:
     const missingPanel = document.getElementById('missing-panel');
     const missingList = document.getElementById('missing-list');
     const sentinel = document.getElementById('feed-sentinel');
+    const rawList = document.getElementById('raw-list');
+    const candidateTable = document.getElementById('candidate-table');
 
     function escapeHtml(value) {{
       return String(value).replace(/[&<>"']/g, (char) => {{
@@ -715,6 +812,10 @@ def render_dashboard_html(payload: dict) -> str:
       document.getElementById('sort-filter-label').textContent = t('sortFilter');
       document.getElementById('stream-title').textContent = t('streamTitle');
       document.getElementById('stream-note').textContent = t('streamNote');
+      document.getElementById('raw-stream-title').textContent = t('rawStreamTitle');
+      document.getElementById('raw-stream-note').textContent = t('rawStreamNote');
+      document.getElementById('candidate-stream-title').textContent = t('candidateStreamTitle');
+      document.getElementById('candidate-stream-note').textContent = t('candidateStreamNote');
       document.getElementById('chip-run-date').textContent = t('runDate');
       document.getElementById('chip-window').textContent = t('coverageWindow');
       document.getElementById('chip-range').textContent = t('publishedRange');
@@ -799,6 +900,62 @@ def render_dashboard_html(payload: dict) -> str:
       missingList.innerHTML = payload.missing_sources.map((entry) => `<li>${{escapeHtml(entry)}}</li>`).join('');
     }}
 
+    function renderRawIntake() {{
+      if (!payload.raw_intake_items.length) {{
+        rawList.innerHTML = `<div class="empty-state">${{escapeHtml(t('rawEmpty'))}}</div>`;
+        return;
+      }}
+      rawList.innerHTML = payload.raw_intake_items.map((item) => {{
+        const notes = (item.screening_notes || []).slice(0, 2).map((note) => `<span class="tag">${{escapeHtml(note)}}</span>`).join('');
+        return `
+          <article class="raw-card">
+            <div class="candidate-head">
+              <div class="candidate-name">${{escapeHtml(item.title_en)}}</div>
+              <span class="candidate-status" data-status="${{escapeHtml(item.curation_bucket)}}">${{escapeHtml(item.source)}}</span>
+            </div>
+            <div class="card-meta">
+              <span>${{escapeHtml(item.published_at)}}</span>
+              <span>${{escapeHtml(item.journal_name || t('venueUnknown'))}}</span>
+              <span>${{escapeHtml(item.venue_type)}}</span>
+            </div>
+            <p class="summary">${{escapeHtml(lang === 'en' ? item.card_summary_en : item.card_summary_zh)}}</p>
+            <div class="card-meta">${{notes}}</div>
+            <div class="inline-links">
+              <a href="${{escapeHtml(item.url)}}" target="_blank" rel="noreferrer">${{escapeHtml(t('openSource'))}}</a>
+            </div>
+          </article>`;
+      }}).join('');
+    }}
+
+    function renderCandidateReport() {{
+      const entries = payload.candidate_report.entries || [];
+      candidateTable.innerHTML = entries.map((entry) => {{
+        const risks = (entry.key_risks || []).map((risk) => `<span class="tag">${{escapeHtml(risk)}}</span>`).join('');
+        const links = [
+          entry.homepage_url ? `<a href="${{escapeHtml(entry.homepage_url)}}" target="_blank" rel="noreferrer">Home</a>` : '',
+          entry.official_docs_url ? `<a href="${{escapeHtml(entry.official_docs_url)}}" target="_blank" rel="noreferrer">Docs</a>` : '',
+          entry.source_repo_url ? `<a href="${{escapeHtml(entry.source_repo_url)}}" target="_blank" rel="noreferrer">Repo</a>` : '',
+        ].filter(Boolean).join('');
+        return `
+          <article class="candidate-card">
+            <div class="candidate-head">
+              <div>
+                <div class="candidate-name">${{escapeHtml(entry.name)}}</div>
+                <div class="card-meta">
+                  <span>${{escapeHtml(entry.candidate_type)}}</span>
+                  <span>${{escapeHtml(entry.execution_mode)}}</span>
+                </div>
+              </div>
+              <span class="candidate-status" data-status="${{escapeHtml(entry.status)}}">${{escapeHtml(entry.status.toUpperCase())}}</span>
+            </div>
+            <p class="signal-line">${{escapeHtml(t('candidateScore'))}}: ${{escapeHtml(String(entry.admission_score))}} · ${{escapeHtml(t('candidateRecommendation'))}}: ${{escapeHtml(entry.implementation_recommendation)}}</p>
+            <div class="card-meta">${{risks}}</div>
+            <p class="summary">${{escapeHtml(entry.review_recommendation || '')}}</p>
+            <div class="inline-links">${{links}}</div>
+          </article>`;
+      }}).join('');
+    }}
+
     function renderCards() {{
       const items = filteredItems();
       const visibleItems = items.slice(0, visibleCount);
@@ -864,6 +1021,8 @@ def render_dashboard_html(payload: dict) -> str:
       renderSortSelect();
       renderMissingSources();
       renderCards();
+      renderRawIntake();
+      renderCandidateReport();
     }}
 
     document.querySelectorAll('.toggle-button').forEach((button) => {{
@@ -935,6 +1094,16 @@ def _serialize_item(item: IntelItem) -> dict:
         "venue_type": item.venue_type,
         "quality_tier": item.quality_tier,
         "importance_score": item.importance_score,
+        "item_importance_score": item.item_importance_score,
+        "admission_score": item.admission_score,
+        "evidence_level": item.evidence_level,
+        "source_class": item.source_class,
+        "source_admission_status": item.source_admission_status,
+        "curation_tier": item.curation_tier,
+        "curation_bucket": item.curation_bucket,
+        "screening_notes": item.screening_notes,
+        "is_archive": item.is_archive,
+        "is_top_journal": item.is_top_journal,
         "venue_type_label": _venue_type_label(item.venue_type),
         "quality_label": _quality_label(item.quality_tier),
     }

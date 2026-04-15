@@ -5,23 +5,38 @@ Research-first, shareable web archive for `psychiatry / psychology + AI`.
 ## What It Does
 
 - Pulls items from public, stable sources defined in [`config/sources.yml`](/Users/zhaoxuhang/Desktop/情报中心/config/sources.yml).
+- Evaluates external `skills / archives / databases / products` with a reusable admission rubric from [`config/candidates.yml`](/Users/zhaoxuhang/Desktop/情报中心/config/candidates.yml).
 - Scores and ranks items for three tracks:
   - `frontier_core`
   - `current_program`
   - `enabling_signals`
+- Splits output into two layers:
+  - `curated brief`: high-trust items that clear promotion rules
+  - `raw intake`: newly captured items that still need review or stronger corroboration
 - Generates:
   - a local dashboard in `intel/site/index.html`
   - a machine-readable snapshot in `intel/site/latest.json`
-  - an English-default card feed with an in-page English / Chinese language switch
+  - an English-default dashboard with in-page English / Chinese language switch
+  - an admission report for source / archive / skill candidates
 
 ## Current Product Shape
 
 - Focus window: last 12 months of psychiatry / psychology + AI research.
+- Delivery mode: weekly brief first, daily escalation later only after archive noise is under control.
 - Default view: English.
 - Alternate view: Chinese labels and card summaries via in-page toggle.
-- Presentation: scrollable research cards with progressive loading and month selection.
+- Presentation: scrollable curated research cards, a raw-intake review section, and an admission report section.
 - Scope: research and enabling signals only; market coverage is intentionally omitted.
-- Card structure: title, venue, quality badges, concise summary, direct link.
+- Card structure: title, venue, quality badges, concise summary, direct link, and screening notes.
+
+## Source Strategy
+
+- Backbone sources: `PubMed / Europe PMC`
+- Archive sources: `arXiv`, `PsyArXiv`
+- Specialty source: `NeuroBlu publications`
+- Promotion layer: local psychiatry / mental health journal whitelist in [`config/journals.yml`](/Users/zhaoxuhang/Desktop/情报中心/config/journals.yml)
+
+Archive items can enter `raw intake`, but they do not enter the curated brief unless they satisfy an explicit promotion rule such as strong study type, corroboration, or top-journal linkage.
 
 ## Run
 
@@ -71,12 +86,120 @@ The `docs/.nojekyll` file is created automatically so Pages serves the static fi
 ## Structure
 
 - `config/`: topic tree and source catalog
+- `config/candidates.yml`: admission registry and rubric for external skills / archives / sources
 - `config/journals.yml`: optional local venue metadata such as quartile / IF
 - `src/intel_center/`: pipeline, parsing, scoring, rendering
+- `src/intel_center/weixin_bridge.py`: text-first WeChat <-> Codex bridge based on the OpenClaw Weixin protocol
 - `scripts/`: CLI entrypoint
 - `intel/`: generated dashboard and snapshots
 - `state/`: machine state and latest run snapshot
 - `tests/`: parser and end-to-end coverage with fixtures
+
+## WeChat Bridge
+
+The repository now includes a text-first WeChat bridge that reuses the `openclaw-weixin` protocol shape but calls the local `codex` CLI as the backend agent.
+
+Current scope:
+
+- QR login against the Weixin bot endpoints
+- long-poll `getupdates`
+- per-user `context_token` persistence
+- per-user Codex `thread_id` persistence
+- text-only outbound replies through `sendmessage`
+
+Current non-goals:
+
+- media upload / download
+- group chats
+- typing indicator
+- production hardening for multi-account routing
+
+Performance defaults:
+
+- default model: `gpt-5.4-mini`
+- default reasoning effort: `medium`
+- default disabled Codex features for bridge replies: `plugins`, `shell_snapshot`
+- non-ASCII workspaces are mirrored into an ASCII path under `~/.codex/weixin-bridge/mirrors/` before each Codex call
+
+That mirror avoids the current Codex websocket regression on non-ASCII workspace paths and keeps WeChat replies much faster than running directly inside a Chinese-named project directory.
+
+### Login
+
+```bash
+python3 scripts/run_weixin_bridge.py login
+```
+
+The command prints a QR URL. Scan it in WeChat and wait for confirmation. Credentials and peer-thread mappings are stored by default at:
+
+```bash
+~/.codex/weixin-bridge/state.json
+```
+
+### Run Once
+
+```bash
+python3 scripts/run_weixin_bridge.py once --workspace /absolute/path/to/workspace
+```
+
+This fetches one batch of inbound messages, forwards text messages into Codex, and sends the final reply back to WeChat.
+
+### Run Continuously
+
+```bash
+python3 scripts/run_weixin_bridge.py serve --workspace /absolute/path/to/workspace
+```
+
+Useful options:
+
+- `--codex-sandbox read-only|workspace-write|danger-full-access`
+- `--codex-model <model>`
+- `--codex-reasoning-effort <minimal|low|medium|high|xhigh>`
+- `--allow-from <user@im.wechat>`
+- `--state-path <path>`
+- `--preamble "custom prompt prefix"`
+- `--no-optimize-latency`: disable the ASCII mirror if you explicitly want direct workspace execution
+
+The recommended first production setup is `--codex-sandbox read-only`, then move to `workspace-write` only after you are comfortable with the safety model.
+
+### Daily WeChat Push
+
+Generate the latest brief and push it to the known WeChat peer(s):
+
+```bash
+python3 scripts/push_weixin_brief.py
+```
+
+Useful options:
+
+- `--print-only`: generate the outgoing message without sending it
+- `--to-user <user@im.wechat>`: push only to a specific peer
+- `--max-curated 5`
+- `--max-raw 3`
+- `--llm`: optionally enhance the summary bullets before pushing
+
+### Background Service
+
+Start the bridge as a macOS `launchd` agent:
+
+```bash
+python3 scripts/run_weixin_bridge.py service-start --workspace /absolute/path/to/workspace
+```
+
+Control commands:
+
+```bash
+python3 scripts/run_weixin_bridge.py service-status --workspace /absolute/path/to/workspace
+python3 scripts/run_weixin_bridge.py service-stop --workspace /absolute/path/to/workspace
+python3 scripts/run_weixin_bridge.py service-restart --workspace /absolute/path/to/workspace
+python3 scripts/run_weixin_bridge.py service-logs --workspace /absolute/path/to/workspace
+python3 scripts/run_weixin_bridge.py health-check --workspace /absolute/path/to/workspace
+```
+
+The service writes:
+
+- launch agent plist: `~/Library/LaunchAgents/dev.codex.weixin-bridge.<hash>.plist`
+- stdout / stderr logs: `~/.codex/weixin-bridge/logs/`
+- optimized Codex mirror: `~/.codex/weixin-bridge/mirrors/`
 
 ## Notes
 

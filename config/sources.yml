@@ -6,7 +6,8 @@
     "max_macro_items": 0,
     "initial_render_count": 16,
     "max_preprint_items": 24,
-    "max_items_per_source": 12
+    "max_items_per_source": 12,
+    "raw_intake_top_n": 240
   },
   "tracks": {
     "frontier_core": {
@@ -21,6 +22,11 @@
           "query": "(psychiatry OR psychiatric OR depression OR schizophrenia OR bipolar OR suicidality OR psychosis) AND (\"artificial intelligence\" OR \"machine learning\" OR \"deep learning\" OR \"large language model\" OR multimodal OR wearable OR digital phenotyping)",
           "page_size": 120,
           "max_pages": 4,
+          "candidate_id": "pubmed_europepmc",
+          "source_class": "database",
+          "admission_status": "adopt",
+          "evidence_level": "peer_reviewed",
+          "curation_tier": "curated",
           "topic_keys": ["psychiatry_ai_frontier", "multimodal_prediction"],
           "tags": ["paper", "frontier"]
         },
@@ -33,6 +39,11 @@
           "query": "(psychology OR psychological OR psychotherapy OR cognitive OR behavior OR behavioural OR anxiety) AND (\"artificial intelligence\" OR \"machine learning\" OR \"deep learning\" OR \"large language model\" OR multimodal OR digital phenotyping)",
           "page_size": 120,
           "max_pages": 4,
+          "candidate_id": "pubmed_europepmc",
+          "source_class": "database",
+          "admission_status": "adopt",
+          "evidence_level": "peer_reviewed",
+          "curation_tier": "curated",
           "topic_keys": ["psychiatry_ai_frontier", "llm_agent_clinical"],
           "tags": ["paper", "frontier"]
         },
@@ -45,8 +56,47 @@
           "url": "https://export.arxiv.org/api/query?search_query=all:(psychiatry+OR+psychology+OR+\"mental+health\"+OR+depression+OR+anxiety)+AND+all:(\"machine+learning\"+OR+\"artificial+intelligence\"+OR+\"large+language+model\"+OR+multimodal+OR+wearable)&start=0&max_results=80&sortBy=submittedDate&sortOrder=descending",
           "page_size": 80,
           "max_pages": 4,
+          "candidate_id": "arxiv_archive",
+          "source_class": "archive",
+          "admission_status": "review",
+          "evidence_level": "preprint",
+          "curation_tier": "raw_only",
           "topic_keys": ["psychiatry_ai_frontier", "llm_agent_clinical"],
           "tags": ["preprint", "frontier"]
+        },
+        {
+          "id": "psyarxiv_mental_health_ai",
+          "kind": "psyarxiv",
+          "name": "PsyArXiv Mental Health + AI",
+          "track": "frontier_core",
+          "priority": 0.88,
+          "url": "https://api.osf.io/v2/preprints/?filter%5Bprovider%5D=psyarxiv",
+          "page_size": 50,
+          "max_pages": 2,
+          "candidate_id": "psyarxiv_archive",
+          "source_class": "archive",
+          "admission_status": "review",
+          "evidence_level": "preprint",
+          "curation_tier": "raw_only",
+          "topic_keys": ["psychiatry_ai_frontier"],
+          "tags": ["preprint", "frontier", "psychology"]
+        },
+        {
+          "id": "neuroblu_publications",
+          "kind": "html_publications",
+          "name": "NeuroBlu Publications",
+          "track": "frontier_core",
+          "priority": 0.84,
+          "url": "https://www.neuroblu.ai/resources/publications",
+          "page_size": 80,
+          "max_pages": 1,
+          "candidate_id": "neuroblu_publications",
+          "source_class": "publications_page",
+          "admission_status": "review",
+          "evidence_level": "mixed",
+          "curation_tier": "review_pool",
+          "topic_keys": ["psychiatry_ai_frontier", "multimodal_prediction"],
+          "tags": ["paper", "frontier", "neuroblu"]
         }
       ]
     },
@@ -62,6 +112,11 @@
           "query": "(depression OR anxiety OR psychiatric OR mental health OR psychotherapy) AND (prediction OR screening OR monitoring OR trajectory OR intervention) AND (clinical OR cohort OR patient) AND (\"machine learning\" OR \"artificial intelligence\" OR multimodal OR wearable OR \"digital phenotyping\" OR llm)",
           "page_size": 120,
           "max_pages": 4,
+          "candidate_id": "pubmed_europepmc",
+          "source_class": "database",
+          "admission_status": "adopt",
+          "evidence_level": "peer_reviewed",
+          "curation_tier": "curated",
           "topic_keys": ["depression", "cardiovascular", "comorbidity"],
           "tags": ["paper", "current-program"]
         },
@@ -74,6 +129,11 @@
           "query": "(comorbidity OR multimorbidity OR \"integrated care\") AND (mental OR psychiatric OR depression OR anxiety) AND (prediction OR risk OR trajectory OR longitudinal) AND (\"machine learning\" OR \"artificial intelligence\" OR multimodal OR wearable OR \"digital phenotyping\")",
           "page_size": 120,
           "max_pages": 4,
+          "candidate_id": "pubmed_europepmc",
+          "source_class": "database",
+          "admission_status": "adopt",
+          "evidence_level": "peer_reviewed",
+          "curation_tier": "curated",
           "topic_keys": ["comorbidity", "multimodal_prediction"],
           "tags": ["paper", "current-program"]
         },
@@ -86,6 +146,11 @@
           "query": "(\"digital phenotyping\" OR wearable OR smartphone OR actigraphy OR \"ecological momentary assessment\" OR \"passive sensing\") AND (depression OR anxiety OR psychiatry OR mental health OR psychology)",
           "page_size": 120,
           "max_pages": 4,
+          "candidate_id": "pubmed_europepmc",
+          "source_class": "database",
+          "admission_status": "adopt",
+          "evidence_level": "peer_reviewed",
+          "curation_tier": "curated",
           "topic_keys": ["digital_phenotyping", "psychiatry_ai_frontier"],
           "tags": ["paper", "current-program"]
         }
