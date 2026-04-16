@@ -391,6 +391,14 @@ def test_resolve_ffmpeg_bin_falls_back_to_common_install_paths(monkeypatch) -> N
     assert audio_transcription.resolve_ffmpeg_bin() == "/opt/homebrew/bin/ffmpeg"
 
 
+def test_silk_detection_accepts_prefixed_magic_header() -> None:
+    attachment = AudioAttachment(download_url="file:///tmp/sample", encode_type=None)
+    payload = b"\x02#!SILK_V3demo"
+
+    assert audio_transcription.WeixinAudioTranscriber._looks_like_silk(attachment, payload) is True
+    assert audio_transcription.WeixinAudioTranscriber._preferred_suffix(attachment, payload) == ".silk"
+
+
 def test_summarize_bridge_log_health_ignores_plugin_noise() -> None:
     result = summarize_bridge_log_health(
         "\n".join(

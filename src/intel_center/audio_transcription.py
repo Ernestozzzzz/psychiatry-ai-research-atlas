@@ -252,6 +252,8 @@ class WeixinAudioTranscriber:
     def _looks_like_silk(attachment: AudioAttachment, payload: bytes) -> bool:
         if payload.startswith(SILK_MAGIC):
             return True
+        if payload[:16].find(SILK_MAGIC) != -1:
+            return True
         if attachment.mime_type.lower() == "audio/silk":
             return True
         return attachment.encode_type == 6
@@ -264,7 +266,7 @@ class WeixinAudioTranscriber:
             return ".mp3"
         if payload.startswith(b"OggS"):
             return ".ogg"
-        if payload.startswith(SILK_MAGIC):
+        if payload.startswith(SILK_MAGIC) or payload[:16].find(SILK_MAGIC) != -1:
             return ".silk"
         suffix = Path(attachment.file_name).suffix.strip()
         if suffix:
