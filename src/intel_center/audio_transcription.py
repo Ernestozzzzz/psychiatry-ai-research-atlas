@@ -9,7 +9,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
-DEFAULT_TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe"
+DEFAULT_TRANSCRIBE_BACKEND = "local"
+DEFAULT_LOCAL_TRANSCRIBE_MODEL = "small"
+DEFAULT_OPENAI_TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe"
 DEFAULT_TRANSCRIBE_LANGUAGE = "zh"
 DEFAULT_AUDIO_EXT = ".m4a"
 
@@ -39,23 +41,36 @@ class WeixinAudioTranscriber:
         self,
         *,
         cache_root: Path,
+        backend: str = DEFAULT_TRANSCRIBE_BACKEND,
         transcribe_cli: Path | None = None,
-        model: str = DEFAULT_TRANSCRIBE_MODEL,
+        model: str | None = None,
         language: str = DEFAULT_TRANSCRIBE_LANGUAGE,
     ):
         self.cache_root = cache_root.expanduser()
+        self.backend = (backend or DEFAULT_TRANSCRIBE_BACKEND).strip().lower()
         self.transcribe_cli = (transcribe_cli or default_transcribe_cli_path()).expanduser()
-        self.model = model
+        self.model = model or self._default_model_for_backend(self.backend)
         self.language = language
+        self._whisper_model = None
 
     def availability_error(self) -> str | None:
-        if not self.transcribe_cli.exists():
-            return f"Transcription CLI not found at {self.transcribe_cli}."
         if shutil.which(sys.executable) is None:
             return "Python runtime is unavailable for voice transcription."
-        if not os.environ.get("OPENAI_API_KEY"):
-            return "OPENAI_API_KEY is not configured on this host."
-        return None
+        if self.backend == "openai":
+            if not self.transcribe_cli.exists():
+                return f"Transcription CLI not found at {self.transcribe_cli}."
+            if not os.environ.get("OPENAI_API_KEY"):
+                return "OPENAI_API_KEY is not configured on this host."
+            return None
+        if self.backend == "local":
+            if shutil.which("ffmpeg") is None:
+                return "ffmpeg is not installed on this host."
+            try:
+                import faster_whisper  # noqa: F401
+            except ImportError:
+                return "faster-whisper is not installed on this host."
+            return None
+        return f"Unsupported transcription backend: {self.backend}"
 
     def transcribe_attachments(
         self,
@@ -74,9 +89,13 @@ class WeixinAudioTranscriber:
 
         for index, attachment in enumerate(attachments, start=1):
             audio_path = job_root / self._attachment_filename(attachment, index=index)
-            transcript_path = job_root / f"{audio_path.stem}.transcript.txt"
             downloader(attachment.download_url, audio_path)
-            transcripts.append(self._run_transcription(audio_path, transcript_path))
+            if self.backend == "local":
+                transcript_path = job_root / f"{audio_path.stem}.local.transcript.txt"
+                transcripts.append(self._run_local_transcription(audio_path, transcript_path))
+            else:
+                transcript_path = job_root / f"{audio_path.stem}.transcript.txt"
+                transcripts.append(self._run_openai_transcription(audio_path, transcript_path))
 
         return [text for text in transcripts if text.strip()]
 
@@ -89,7 +108,7 @@ class WeixinAudioTranscriber:
             return candidate
         return f"voice-{index}{DEFAULT_AUDIO_EXT}"
 
-    def _run_transcription(self, audio_path: Path, transcript_path: Path) -> str:
+    def _run_openai_transcription(self, audio_path: Path, transcript_path: Path) -> str:
         command = [
             sys.executable,
             str(self.transcribe_cli),
@@ -115,3 +134,63 @@ class WeixinAudioTranscriber:
         if not transcript_path.exists():
             raise AudioTranscriptionError("Transcription CLI completed without producing an output file.")
         return transcript_path.read_text(encoding="utf-8").strip()
+
+    def _run_local_transcription(self, audio_path: Path, transcript_path: Path) -> str:
+        normalized_path = transcript_path.with_suffix(".wav")
+        self._normalize_audio(audio_path, normalized_path)
+        model = self._load_local_model()
+        segments, _info = model.transcribe(
+            str(normalized_path),
+            language=self.language,
+            vad_filter=True,
+            beam_size=5,
+            condition_on_previous_text=False,
+        )
+        text = " ".join(segment.text.strip() for segment in segments if segment.text.strip()).strip()
+        if not text:
+            raise AudioTranscriptionError("Local transcription completed but produced empty text.")
+        transcript_path.write_text(text, encoding="utf-8")
+        return text
+
+    def _normalize_audio(self, source_path: Path, target_path: Path) -> None:
+        ffmpeg_bin = shutil.which("ffmpeg")
+        if not ffmpeg_bin:
+            raise AudioTranscriptionError("ffmpeg is not installed on this host.")
+        command = [
+            ffmpeg_bin,
+            "-y",
+            "-i",
+            str(source_path),
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            str(target_path),
+        ]
+        process = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if process.returncode != 0:
+            detail = process.stderr.strip() or process.stdout.strip() or "ffmpeg conversion failed"
+            raise AudioTranscriptionError(detail)
+        if not target_path.exists():
+            raise AudioTranscriptionError("ffmpeg conversion completed without producing normalized audio.")
+
+    def _load_local_model(self):
+        if self._whisper_model is not None:
+            return self._whisper_model
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError as exc:
+            raise AudioTranscriptionError("faster-whisper is not installed on this host.") from exc
+        self._whisper_model = WhisperModel(self.model, device="cpu", compute_type="int8")
+        return self._whisper_model
+
+    @staticmethod
+    def _default_model_for_backend(backend: str) -> str:
+        if backend == "openai":
+            return DEFAULT_OPENAI_TRANSCRIBE_MODEL
+        return DEFAULT_LOCAL_TRANSCRIBE_MODEL

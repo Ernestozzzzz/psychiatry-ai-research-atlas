@@ -272,6 +272,8 @@ def test_build_bridge_config_uses_fast_codex_defaults(tmp_path: Path) -> None:
     assert config.codex_model == "gpt-5.4-mini"
     assert config.codex_reasoning_effort == "medium"
     assert config.codex_workspace == tmp_path.resolve()
+    assert config.transcription_backend == "local"
+    assert config.transcribe_model == "small"
 
 
 def test_build_bridge_config_creates_ascii_mirror_for_non_ascii_workspace(tmp_path: Path) -> None:

@@ -23,8 +23,9 @@ from typing import Any
 from uuid import uuid4
 
 from .audio_transcription import (
+    DEFAULT_TRANSCRIBE_BACKEND,
     DEFAULT_TRANSCRIBE_LANGUAGE,
-    DEFAULT_TRANSCRIBE_MODEL,
+    DEFAULT_LOCAL_TRANSCRIBE_MODEL,
     AudioAttachment,
     AudioTranscriptionError,
     WeixinAudioTranscriber,
@@ -89,8 +90,9 @@ class WeixinBridgeConfig:
     )
     allow_from: set[str] = field(default_factory=set)
     enable_audio_transcription: bool = True
+    transcription_backend: str = DEFAULT_TRANSCRIBE_BACKEND
     transcribe_cli: str = ""
-    transcribe_model: str = DEFAULT_TRANSCRIBE_MODEL
+    transcribe_model: str = DEFAULT_LOCAL_TRANSCRIBE_MODEL
     transcribe_language: str = DEFAULT_TRANSCRIBE_LANGUAGE
 
 
@@ -641,6 +643,7 @@ class WeixinCodexBridge:
         self.audio_transcriber = audio_transcriber or (
             WeixinAudioTranscriber(
                 cache_root=config.audio_cache_root or default_audio_cache_root(),
+                backend=config.transcription_backend,
                 transcribe_cli=Path(config.transcribe_cli).expanduser() if config.transcribe_cli else default_transcribe_cli_path(),
                 model=config.transcribe_model,
                 language=config.transcribe_language,
@@ -918,8 +921,9 @@ def build_bridge_config(
     preamble: str | None = None,
     allow_from: list[str] | None = None,
     enable_audio_transcription: bool = True,
+    transcription_backend: str = DEFAULT_TRANSCRIBE_BACKEND,
     transcribe_cli: str | None = None,
-    transcribe_model: str = DEFAULT_TRANSCRIBE_MODEL,
+    transcribe_model: str = DEFAULT_LOCAL_TRANSCRIBE_MODEL,
     transcribe_language: str = DEFAULT_TRANSCRIBE_LANGUAGE,
 ) -> WeixinBridgeConfig:
     source_workspace = workspace.expanduser().resolve()
@@ -947,7 +951,8 @@ def build_bridge_config(
         preamble=preamble or WeixinBridgeConfig(state_path=Path("."), workspace=source_workspace, codex_workspace=codex_workspace).preamble,
         allow_from=set(allow_from or []),
         enable_audio_transcription=enable_audio_transcription,
+        transcription_backend=transcription_backend or DEFAULT_TRANSCRIBE_BACKEND,
         transcribe_cli=str((Path(transcribe_cli).expanduser() if transcribe_cli else default_transcribe_cli_path()).resolve()),
-        transcribe_model=transcribe_model or DEFAULT_TRANSCRIBE_MODEL,
+        transcribe_model=transcribe_model or DEFAULT_LOCAL_TRANSCRIBE_MODEL,
         transcribe_language=transcribe_language or DEFAULT_TRANSCRIBE_LANGUAGE,
     )

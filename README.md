@@ -105,7 +105,7 @@ Current scope:
 - long-poll `getupdates`
 - per-user `context_token` persistence
 - per-user Codex `thread_id` persistence
-- optional inbound voice transcription via the local `transcribe_diarize.py` CLI
+- optional inbound voice transcription, with offline `faster-whisper` as the default backend
 - text-only outbound replies through `sendmessage`
 
 Current non-goals:
@@ -160,19 +160,35 @@ Useful options:
 - `--preamble "custom prompt prefix"`
 - `--no-optimize-latency`: disable the ASCII mirror if you explicitly want direct workspace execution
 - `--disable-audio-transcription`: ignore inbound WeChat voice attachments
+- `--transcription-backend local|openai`: choose the offline or API transcription path
 - `--transcribe-cli <path>`: override the local transcription CLI
 - `--transcribe-model <model>`: override the voice transcription model
 - `--transcribe-language <lang>`: language hint for voice transcription, defaults to `zh`
 
 The recommended first production setup is `--codex-sandbox read-only`, then move to `workspace-write` only after you are comfortable with the safety model.
 
-Voice transcription requirements:
+Offline voice transcription requirements:
+
+```bash
+brew install ffmpeg
+python3 -m pip install faster-whisper
+```
+
+The default bridge mode is offline:
+
+```bash
+python3 scripts/run_weixin_bridge.py serve --workspace /absolute/path/to/workspace
+```
+
+That uses `faster-whisper` locally and does not require `OPENAI_API_KEY`.
+
+OpenAI API transcription remains optional:
 
 ```bash
 export OPENAI_API_KEY=...
 ```
 
-By default the bridge looks for the CLI at:
+If you explicitly switch to `--transcription-backend openai`, the bridge looks for the CLI at:
 
 ```bash
 ~/.codex/skills/transcribe/scripts/transcribe_diarize.py

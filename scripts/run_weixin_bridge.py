@@ -89,13 +89,19 @@ def parse_args() -> argparse.Namespace:
         help="Disable automatic transcription for inbound WeChat voice messages.",
     )
     parser.add_argument(
+        "--transcription-backend",
+        choices=["local", "openai"],
+        default="local",
+        help="Voice transcription backend. Defaults to local offline faster-whisper.",
+    )
+    parser.add_argument(
         "--transcribe-cli",
         help="Path to the transcribe_diarize.py CLI used for voice transcription.",
     )
     parser.add_argument(
         "--transcribe-model",
-        default="gpt-4o-mini-transcribe",
-        help="OpenAI transcription model for WeChat voice messages.",
+        default="small",
+        help="Transcription model. For local backend, use a faster-whisper model such as tiny/base/small.",
     )
     parser.add_argument(
         "--transcribe-language",
@@ -125,6 +131,7 @@ def main() -> int:
         preamble=args.preamble,
         allow_from=args.allow_from,
         enable_audio_transcription=not args.disable_audio_transcription,
+        transcription_backend=args.transcription_backend,
         transcribe_cli=args.transcribe_cli,
         transcribe_model=args.transcribe_model,
         transcribe_language=args.transcribe_language,
