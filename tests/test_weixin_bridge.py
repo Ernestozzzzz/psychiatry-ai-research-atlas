@@ -5,6 +5,7 @@ import threading
 import time
 from pathlib import Path
 
+from intel_center import audio_transcription
 from intel_center.audio_transcription import AudioAttachment
 from intel_center.weixin_bridge import (
     CodexReply,
@@ -342,6 +343,19 @@ def test_build_launch_agent_plist_contains_service_metadata(tmp_path: Path) -> N
     assert payload["StandardOutPath"] == str(stdout_path)
     assert payload["StandardErrorPath"] == str(stderr_path)
     assert payload["WorkingDirectory"] == str(tmp_path)
+    assert payload["EnvironmentVariables"]["PATH"].startswith("/opt/homebrew/bin:")
+
+
+def test_resolve_ffmpeg_bin_falls_back_to_common_install_paths(monkeypatch) -> None:
+    monkeypatch.delenv("FFMPEG_BIN", raising=False)
+    monkeypatch.setattr(audio_transcription.shutil, "which", lambda _: None)
+    monkeypatch.setattr(
+        audio_transcription.Path,
+        "exists",
+        lambda self: str(self) == "/opt/homebrew/bin/ffmpeg",
+    )
+
+    assert audio_transcription.resolve_ffmpeg_bin() == "/opt/homebrew/bin/ffmpeg"
 
 
 def test_summarize_bridge_log_health_ignores_plugin_noise() -> None:

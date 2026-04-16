@@ -14,6 +14,11 @@ DEFAULT_LOCAL_TRANSCRIBE_MODEL = "small"
 DEFAULT_OPENAI_TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe"
 DEFAULT_TRANSCRIBE_LANGUAGE = "zh"
 DEFAULT_AUDIO_EXT = ".m4a"
+DEFAULT_FFMPEG_CANDIDATES = (
+    "/opt/homebrew/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
+    "/usr/bin/ffmpeg",
+)
 
 
 class AudioTranscriptionError(RuntimeError):
@@ -34,6 +39,21 @@ def default_transcribe_cli_path() -> Path:
     if env_value:
         return Path(env_value).expanduser()
     return Path.home() / ".codex" / "skills" / "transcribe" / "scripts" / "transcribe_diarize.py"
+
+
+def resolve_ffmpeg_bin() -> str | None:
+    env_value = os.environ.get("FFMPEG_BIN")
+    if env_value:
+        candidate = Path(env_value).expanduser()
+        if candidate.exists():
+            return str(candidate)
+    discovered = shutil.which("ffmpeg")
+    if discovered:
+        return discovered
+    for candidate in DEFAULT_FFMPEG_CANDIDATES:
+        if Path(candidate).exists():
+            return candidate
+    return None
 
 
 class WeixinAudioTranscriber:
@@ -63,7 +83,7 @@ class WeixinAudioTranscriber:
                 return "OPENAI_API_KEY is not configured on this host."
             return None
         if self.backend == "local":
-            if shutil.which("ffmpeg") is None:
+            if resolve_ffmpeg_bin() is None:
                 return "ffmpeg is not installed on this host."
             try:
                 import faster_whisper  # noqa: F401
@@ -153,7 +173,7 @@ class WeixinAudioTranscriber:
         return text
 
     def _normalize_audio(self, source_path: Path, target_path: Path) -> None:
-        ffmpeg_bin = shutil.which("ffmpeg")
+        ffmpeg_bin = resolve_ffmpeg_bin()
         if not ffmpeg_bin:
             raise AudioTranscriptionError("ffmpeg is not installed on this host.")
         command = [

@@ -203,7 +203,10 @@ def build_launch_agent_plist(
         "WorkingDirectory": str(working_directory),
         "RunAtLoad": True,
         "KeepAlive": True,
-        "EnvironmentVariables": {"PYTHONUNBUFFERED": "1"},
+        "EnvironmentVariables": {
+            "PYTHONUNBUFFERED": "1",
+            "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        },
         "StandardOutPath": str(stdout_path),
         "StandardErrorPath": str(stderr_path),
     }
