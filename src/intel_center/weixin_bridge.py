@@ -29,6 +29,7 @@ from .audio_transcription import (
     AudioAttachment,
     AudioTranscriptionError,
     WeixinAudioTranscriber,
+    build_cdn_download_url,
     default_transcribe_cli_path,
 )
 
@@ -486,15 +487,22 @@ class WeixinApiClient:
             raise WeixinBridgeError(f"Weixin sendmessage failed: {detail}")
         return client_id
 
-    def download_attachment(self, state: WeixinBridgeState, *, url: str, timeout_ms: int = 30_000) -> bytes:
-        resolved_url = urllib.parse.urljoin(state.base_url.rstrip("/") + "/", url)
-        headers = {
-            "AuthorizationType": "ilink_bot_token",
-            "X-WECHAT-UIN": random_wechat_uin(),
-            **self._common_headers(),
-        }
-        if state.token.strip():
-            headers["Authorization"] = f"Bearer {state.token.strip()}"
+    def download_attachment(self, state: WeixinBridgeState, *, attachment: AudioAttachment, timeout_ms: int = 30_000) -> bytes:
+        if attachment.full_url.strip():
+            resolved_url = attachment.full_url.strip()
+            headers = {"User-Agent": "node"}
+        elif attachment.encrypt_query_param.strip():
+            resolved_url = build_cdn_download_url(attachment.encrypt_query_param.strip())
+            headers = {"User-Agent": "node"}
+        else:
+            resolved_url = urllib.parse.urljoin(state.base_url.rstrip("/") + "/", attachment.download_url)
+            headers = {
+                "AuthorizationType": "ilink_bot_token",
+                "X-WECHAT-UIN": random_wechat_uin(),
+                **self._common_headers(),
+            }
+            if state.token.strip():
+                headers["Authorization"] = f"Bearer {state.token.strip()}"
         request = urllib.request.Request(resolved_url, headers=headers, method="GET")
         timeout_seconds = max(timeout_ms / 1000, 1)
         try:
@@ -732,8 +740,8 @@ class WeixinCodexBridge:
             transcripts = self.audio_transcriber.transcribe_attachments(
                 message.audio_attachments,
                 message_id=message.message_id,
-                downloader=lambda url, path: path.write_bytes(
-                    self.client.download_attachment(state, url=url)
+                downloader=lambda attachment, path: path.write_bytes(
+                    self.client.download_attachment(state, attachment=attachment)
                 ),
             )
         except AudioTranscriptionError as exc:
@@ -794,9 +802,12 @@ def _extract_audio_attachments(raw_message: dict[str, Any]) -> list[AudioAttachm
     seen_urls: set[str] = set()
     for item in raw_message.get("item_list", []) or []:
         url = _find_audio_url(item)
-        if not url or url in seen_urls:
+        full_url = _find_first_string(item, "full_url")
+        encrypt_query_param = _find_first_string(item, "encrypt_query_param")
+        dedupe_key = full_url or encrypt_query_param or url
+        if not dedupe_key or dedupe_key in seen_urls:
             continue
-        seen_urls.add(url)
+        seen_urls.add(dedupe_key)
         attachments.append(
             AudioAttachment(
                 download_url=url,
@@ -804,6 +815,10 @@ def _extract_audio_attachments(raw_message: dict[str, Any]) -> list[AudioAttachm
                 mime_type=_find_mime_type(item),
                 duration_ms=_find_duration_ms(item),
                 item_type=str(item.get("type") or ""),
+                encrypt_query_param=encrypt_query_param,
+                full_url=full_url,
+                aes_key=_find_first_string(item, "aes_key"),
+                encode_type=_find_first_int(item, "encode_type"),
             )
         )
     return attachments
@@ -884,6 +899,15 @@ def _find_first_scalar(node: Any, target_key: str) -> Any:
             nested = _find_first_scalar(value, target_key)
             if nested is not None:
                 return nested
+    return None
+
+
+def _find_first_int(node: Any, target_key: str) -> int | None:
+    value = _find_first_scalar(node, target_key)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
     return None
 
 

@@ -52,9 +52,9 @@ class FakeWeixinClient:
         )
         return "client-1"
 
-    def download_attachment(self, state, *, url: str, timeout_ms: int = 30_000):
+    def download_attachment(self, state, *, attachment: AudioAttachment, timeout_ms: int = 30_000):
         del state, timeout_ms
-        return f"audio:{url}".encode("utf-8")
+        return f"audio:{attachment.full_url or attachment.encrypt_query_param or attachment.download_url}".encode("utf-8")
 
 
 class FakeCodexRunner:
@@ -146,6 +146,39 @@ def test_normalize_inbound_messages_extracts_audio_attachments() -> None:
     assert messages[0].audio_attachments
     assert messages[0].audio_attachments[0].download_url == "https://example.org/voice.amr"
     assert messages[0].audio_attachments[0].file_name == "voice.amr"
+
+
+def test_normalize_inbound_messages_extracts_encrypted_voice_metadata() -> None:
+    payload = {
+        "msgs": [
+            {
+                "from_user_id": "alice@im.wechat",
+                "to_user_id": "bot@im.bot",
+                "context_token": "ctx-voice",
+                "message_id": 125,
+                "create_time_ms": 458,
+                "item_list": [
+                    {
+                        "type": 3,
+                        "voice_item": {
+                            "encode_type": 6,
+                            "media": {
+                                "encrypt_query_param": "cipher-token",
+                                "full_url": "https://cdn.example.org/download",
+                                "aes_key": "MDEyMzQ1Njc4OWFiY2RlZg==",
+                            },
+                        },
+                    }
+                ],
+            }
+        ]
+    }
+    messages = normalize_inbound_messages(payload)
+    attachment = messages[0].audio_attachments[0]
+    assert attachment.full_url == "https://cdn.example.org/download"
+    assert attachment.encrypt_query_param == "cipher-token"
+    assert attachment.aes_key == "MDEyMzQ1Njc4OWFiY2RlZg=="
+    assert attachment.encode_type == 6
 
 
 def test_bridge_handle_once_binds_peer_to_codex_thread(tmp_path: Path) -> None:

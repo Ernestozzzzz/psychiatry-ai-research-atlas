@@ -4,9 +4,13 @@ import os
 import shutil
 import subprocess
 import sys
+from base64 import b64decode
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
+
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.padding import PKCS7
 
 
 DEFAULT_TRANSCRIBE_BACKEND = "local"
@@ -14,11 +18,13 @@ DEFAULT_LOCAL_TRANSCRIBE_MODEL = "small"
 DEFAULT_OPENAI_TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe"
 DEFAULT_TRANSCRIBE_LANGUAGE = "zh"
 DEFAULT_AUDIO_EXT = ".m4a"
+DEFAULT_WECHAT_CDN_BASE_URL = "https://novac2c.cdn.weixin.qq.com/c2c"
 DEFAULT_FFMPEG_CANDIDATES = (
     "/opt/homebrew/bin/ffmpeg",
     "/usr/local/bin/ffmpeg",
     "/usr/bin/ffmpeg",
 )
+SILK_MAGIC = b"#!SILK_V3"
 
 
 class AudioTranscriptionError(RuntimeError):
@@ -32,6 +38,10 @@ class AudioAttachment:
     mime_type: str = ""
     duration_ms: int | None = None
     item_type: str = ""
+    encrypt_query_param: str = ""
+    full_url: str = ""
+    aes_key: str = ""
+    encode_type: int | None = None
 
 
 def default_transcribe_cli_path() -> Path:
@@ -54,6 +64,31 @@ def resolve_ffmpeg_bin() -> str | None:
         if Path(candidate).exists():
             return candidate
     return None
+
+
+def build_cdn_download_url(encrypted_query_param: str, cdn_base_url: str = DEFAULT_WECHAT_CDN_BASE_URL) -> str:
+    from urllib.parse import quote
+
+    return f"{cdn_base_url.rstrip('/')}/download?encrypted_query_param={quote(encrypted_query_param)}"
+
+
+def parse_aes_key(aes_key_value: str) -> bytes:
+    decoded = b64decode(aes_key_value)
+    if len(decoded) == 16:
+        return decoded
+    if len(decoded) == 32:
+        as_ascii = decoded.decode("ascii", errors="ignore")
+        if len(as_ascii) == 32 and all(char in "0123456789abcdefABCDEF" for char in as_ascii):
+            return bytes.fromhex(as_ascii)
+    raise AudioTranscriptionError("Unsupported WeChat media AES key format.")
+
+
+def decrypt_aes_ecb(ciphertext: bytes, key: bytes) -> bytes:
+    cipher = Cipher(algorithms.AES(key), modes.ECB())
+    decryptor = cipher.decryptor()
+    padded = decryptor.update(ciphertext) + decryptor.finalize()
+    unpadder = PKCS7(128).unpadder()
+    return unpadder.update(padded) + unpadder.finalize()
 
 
 class WeixinAudioTranscriber:
@@ -109,10 +144,10 @@ class WeixinAudioTranscriber:
 
         for index, attachment in enumerate(attachments, start=1):
             audio_path = job_root / self._attachment_filename(attachment, index=index)
-            downloader(attachment.download_url, audio_path)
+            downloader(attachment, audio_path)
             if self.backend == "local":
                 transcript_path = job_root / f"{audio_path.stem}.local.transcript.txt"
-                transcripts.append(self._run_local_transcription(audio_path, transcript_path))
+                transcripts.append(self._run_local_transcription(audio_path, transcript_path, attachment))
             else:
                 transcript_path = job_root / f"{audio_path.stem}.transcript.txt"
                 transcripts.append(self._run_openai_transcription(audio_path, transcript_path))
@@ -155,9 +190,8 @@ class WeixinAudioTranscriber:
             raise AudioTranscriptionError("Transcription CLI completed without producing an output file.")
         return transcript_path.read_text(encoding="utf-8").strip()
 
-    def _run_local_transcription(self, audio_path: Path, transcript_path: Path) -> str:
-        normalized_path = transcript_path.with_suffix(".wav")
-        self._normalize_audio(audio_path, normalized_path)
+    def _run_local_transcription(self, audio_path: Path, transcript_path: Path, attachment: AudioAttachment) -> str:
+        normalized_path = self._prepare_local_audio(audio_path, transcript_path, attachment)
         model = self._load_local_model()
         segments, _info = model.transcribe(
             str(normalized_path),
@@ -171,6 +205,75 @@ class WeixinAudioTranscriber:
             raise AudioTranscriptionError("Local transcription completed but produced empty text.")
         transcript_path.write_text(text, encoding="utf-8")
         return text
+
+    def _prepare_local_audio(self, audio_path: Path, transcript_path: Path, attachment: AudioAttachment) -> Path:
+        source_path = audio_path
+        if attachment.aes_key.strip():
+            decrypted = decrypt_aes_ecb(audio_path.read_bytes(), parse_aes_key(attachment.aes_key.strip()))
+            if self._looks_like_silk(attachment, decrypted):
+                wav_bytes = self._decode_silk_to_wav(decrypted)
+                if wav_bytes is None:
+                    raise AudioTranscriptionError("WeChat voice payload was decoded, but Silk transcoding failed.")
+                wav_path = transcript_path.with_suffix(".wav")
+                wav_path.write_bytes(wav_bytes)
+                return wav_path
+            source_path = transcript_path.with_suffix(self._preferred_suffix(attachment, decrypted))
+            source_path.write_bytes(decrypted)
+
+        normalized_path = transcript_path.with_suffix(".wav")
+        self._normalize_audio(source_path, normalized_path)
+        return normalized_path
+
+    def _decode_silk_to_wav(self, silk_bytes: bytes) -> bytes | None:
+        try:
+            import io
+            import wave
+            import pysilk
+        except ImportError as exc:
+            raise AudioTranscriptionError("pysilk is not installed on this host.") from exc
+
+        try:
+            silk_stream = io.BytesIO(silk_bytes)
+            pcm_stream = io.BytesIO()
+            sample_rate = 24_000
+            pysilk.decode(silk_stream, pcm_stream, sample_rate)
+            pcm_bytes = pcm_stream.getvalue()
+            output = io.BytesIO()
+            with wave.open(output, "wb") as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(sample_rate)
+                wav_file.writeframes(pcm_bytes)
+            return output.getvalue()
+        except Exception:
+            return None
+
+    @staticmethod
+    def _looks_like_silk(attachment: AudioAttachment, payload: bytes) -> bool:
+        if payload.startswith(SILK_MAGIC):
+            return True
+        if attachment.mime_type.lower() == "audio/silk":
+            return True
+        return attachment.encode_type == 6
+
+    @staticmethod
+    def _preferred_suffix(attachment: AudioAttachment, payload: bytes) -> str:
+        if payload.startswith(b"RIFF"):
+            return ".wav"
+        if payload.startswith(b"ID3") or payload[:2] == b"\xff\xfb":
+            return ".mp3"
+        if payload.startswith(b"OggS"):
+            return ".ogg"
+        if payload.startswith(SILK_MAGIC):
+            return ".silk"
+        suffix = Path(attachment.file_name).suffix.strip()
+        if suffix:
+            return suffix
+        if attachment.mime_type.lower() == "audio/mpeg":
+            return ".mp3"
+        if attachment.mime_type.lower() == "audio/ogg":
+            return ".ogg"
+        return DEFAULT_AUDIO_EXT
 
     def _normalize_audio(self, source_path: Path, target_path: Path) -> None:
         ffmpeg_bin = resolve_ffmpeg_bin()
